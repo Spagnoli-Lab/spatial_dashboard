@@ -1,0 +1,9 @@
+# raw data
+test_data/
+
+# trials
+notebook/
+
+# background data
+**/__pycache__/
+**/.DS_Store
