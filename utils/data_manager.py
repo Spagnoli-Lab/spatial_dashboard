@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 class DataManager:
     """Manages data loading and processing for all three data types"""
     
-    def __init__(self, data_dir: str = "/Users/mayongzhi/Desktop/FS_lab/dashboard/test_data"):
+    def __init__(self, data_dir: str = "/Users/mayongzhi/Desktop/FS_lab/dashboard/test_data/scRNA-seq"):
         self.data_dir = Path(data_dir)
         self.scrna_data = {}  # Dictionary to store data by sample
         self.spatial_data = {}  # Dictionary to store data by sample
@@ -24,14 +24,23 @@ class DataManager:
     def load_scrna_data(self, sample: str) -> anndata.AnnData:
         """Load scRNA-seq data for specific sample"""
         try:
-            # Look for scRNA-seq files for the specific sample
-            sample_files = list(self.data_dir.glob(f"*{sample}*scrna*.h5ad"))
-            if not sample_files:
-                sample_files = list(self.data_dir.glob(f"*{sample}*.h5ad"))
+            # Specific path for Cartana.h5ad file
+            cartana_path = "/Users/mayongzhi/Desktop/FS_lab/dashboard/test_data/scRNA-seq/Cartana.h5ad"
             
-            if sample_files:
-                file_path = str(sample_files[0])
+            # Check if Cartana.h5ad exists and load it
+            if Path(cartana_path).exists():
+                file_path = cartana_path
                 adata = anndata.read_h5ad(file_path)
+                
+                # Filter data based on selected sample (orig.ident)
+                if 'orig.ident' in adata.obs.columns:
+                    # Filter to only include cells from the selected sample
+                    sample_mask = adata.obs['orig.ident'] == sample
+                    adata = adata[sample_mask].copy()
+                    
+                    if adata.n_obs == 0:
+                        st.error(f"No cells found for sample '{sample}' in orig.ident")
+                        return None
                 
                 # Calculate quality metrics
                 adata.obs['total_counts'] = np.sum(adata.X, axis=1)
@@ -42,8 +51,26 @@ class DataManager:
                 self.scrna_data[sample] = adata
                 return adata
             else:
-                st.error(f"No scRNA-seq data found for sample {sample}")
-                return None
+                # Fallback to original logic for other samples
+                sample_files = list(self.data_dir.glob(f"*{sample}*scrna*.h5ad"))
+                if not sample_files:
+                    sample_files = list(self.data_dir.glob(f"*{sample}*.h5ad"))
+                
+                if sample_files:
+                    file_path = str(sample_files[0])
+                    adata = anndata.read_h5ad(file_path)
+                    
+                    # Calculate quality metrics
+                    adata.obs['total_counts'] = np.sum(adata.X, axis=1)
+                    adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
+                    adata.var['total_counts'] = np.sum(adata.X, axis=0)
+                    adata.var['n_cells_by_counts'] = np.sum(adata.X > 0, axis=0)
+                    
+                    self.scrna_data[sample] = adata
+                    return adata
+                else:
+                    st.error(f"No scRNA-seq data found for sample {sample}")
+                    return None
         except Exception as e:
             st.error(f"Error loading scRNA-seq data for {sample}: {e}")
             return None
@@ -118,6 +145,29 @@ class DataManager:
             elif 'e17' in file_name and 'e17' not in samples:
                 samples.append('E17')
         return sorted(samples)
+    
+    def get_scrna_sample_options(self) -> List[str]:
+        """Get unique orig.ident values from Cartana.h5ad file for scRNA-seq sample selection"""
+        try:
+            cartana_path = "/Users/mayongzhi/Desktop/FS_lab/dashboard/test_data/scRNA-seq/Cartana.h5ad"
+            
+            if Path(cartana_path).exists():
+                # Load the Cartana.h5ad file temporarily to get orig.ident values
+                adata = anndata.read_h5ad(cartana_path)
+                
+                # Check if orig.ident column exists
+                if 'orig.ident' in adata.obs.columns:
+                    unique_identities = sorted(adata.obs['orig.ident'].unique().tolist())
+                    return unique_identities
+                else:
+                    # If orig.ident doesn't exist, return default options
+                    return ['E12', 'E14', 'E17']
+            else:
+                # Fallback to default options if file doesn't exist
+                return ['E12', 'E14', 'E17']
+        except Exception as e:
+            print(f"Error reading Cartana.h5ad for sample options: {e}")
+            return ['E12', 'E14', 'E17']
     
     def get_data_summary(self) -> Dict:
         """Get summary of all loaded data"""
