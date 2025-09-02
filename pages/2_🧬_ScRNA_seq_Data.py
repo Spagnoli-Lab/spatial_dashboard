@@ -194,12 +194,9 @@ if 'total_counts' in adata.var.columns:
 else:
     display_genes = all_genes[:100]
 
-# Gene selection with multiselect
-st.write("**Select genes to include in dot plot:**")
-
 # Use multiselect for gene selection
 gene_list = st.multiselect(
-    "Choose genes:",
+    "Select genes to include in dot plot:",
     options=display_genes,
     default=display_genes[:5] if len(display_genes) >= 5 else display_genes,
     help="Select the genes you want to include in the dot plot"
@@ -213,7 +210,6 @@ else:
 
 # Create dot plot using scanpy
 if gene_list and selected_groupby in adata.obs.columns:
-    st.write("**Generating dot plot...**")
     
     # Import scanpy for plotting
     import scanpy as sc
@@ -264,10 +260,10 @@ if selected_cell_type in adata.obs.columns and selected_sample_group in adata.ob
     tmp = pd.crosstab(adata.obs[selected_cell_type], adata.obs[selected_sample_group], normalize='columns').T.plot(kind='bar', stacked=True, ax=ax)
     
     # Adjust the legend position
-    tmp.legend(title=selected_cell_type, bbox_to_anchor=(1.05, 1), loc='upper left')
+    tmp.legend(title= "Cell Type", bbox_to_anchor=(1.05, 1), loc='upper left')
     
     # Set labels and title
-    plt.xlabel(selected_sample_group)
+    #plt.xlabel(selected_sample_group)
     plt.ylabel('Proportion')
     plt.title(f'Cell Type Proportion - {sample_display_name}')
     
