@@ -5,6 +5,11 @@ Uses Streamlit's native multi-page navigation
 """
 
 import streamlit as st
+from streamlit import session_state as ss
+
+# Initialize sidebar state
+if 'sidebar_state' not in ss:
+    ss.sidebar_state = 'expanded'  # Set to expanded by default
 
 # Page configuration
 st.set_page_config(
@@ -14,14 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hide default navigation elements
-st.markdown("""
-<style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
 
 # Main content - this will be the home page
 st.title("🧬 Spatial Transcriptomics Dashboard")
