@@ -157,35 +157,33 @@ with col4:
 if SQUIDPY_AVAILABLE:
     st.subheader("🔬 Squidpy Spatial Scatter Plot")
     
-    col1, col2 = st.columns([3, 1])
+    # Plot settings above the figure
+    st.markdown("### Plot Settings")
     
-    with col2:
-        st.markdown("### Plot Settings")
-        
+    col1, col2 = st.columns(2)
+    
+    with col1:
         # Color options for squidpy
         squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
         squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
-        
+    
+    with col2:
         # Point size
         point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
-        
-        # Shape options
-        #shape_options = [None, "circle", "square", "triangle"]
-        #selected_shape = st.selectbox("Point shape:", shape_options, key="squidpy_shape")
-        
-        # Generate plot button
-        if st.button("Generate Squidpy Plot", key="generate_squidpy"):
-            with st.spinner("Generating Squidpy spatial scatter plot..."):
-                fig = spatial_viz_manager.plot_spatial_scatter(
-                    adata,
-                    color=squidpy_color,
-                    size=point_size,
-                    title=f"Squidpy Spatial Scatter - {selected_sample}"
-                )
-                if fig:
-                    with col1:
-                        st.pyplot(fig)
-                    plt.close(fig)
+    
+    # Generate plot automatically when data is loaded
+    with st.spinner("Generating Squidpy spatial scatter plot..."):
+        fig = spatial_viz_manager.plot_spatial_scatter(
+            adata,
+            color=squidpy_color,
+            size=point_size,
+            title=f"Squidpy Spatial Scatter - {selected_sample}"
+        )
+        if fig:
+            st.pyplot(fig)
+            plt.close(fig)
+        else:
+            st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
 else:
     st.info("💡 Install squidpy to enable advanced spatial analysis features: `pip install squidpy`")
 
@@ -195,30 +193,25 @@ st.subheader("🔬 Neighborhood Enrichment Analysis")
 # Squidpy Neighborhood Enrichment Analysis
 if SQUIDPY_AVAILABLE:
     
-    col1, col2 = st.columns([3, 1])
+    # Analysis settings above the figure
+    st.markdown("### Analysis Settings")
     
-    with col2:
-        st.markdown("### Analysis Settings")
-        
-        # Cluster key options
-        cluster_key_options = ['celltype'] + [col for col in adata.obs.columns if col != 'celltype']
-        selected_cluster_key = st.selectbox("Cluster key:", cluster_key_options, key="squidpy_cluster_key")
-        
-        # Number of permutations
-        #n_perms = st.slider("Number of permutations:", min_value=100, max_value=1000, value=100, step=100, key="n_perms")
-        
-        # Generate analysis button
-        if st.button("Generate Neighborhood Analysis", key="generate_nhood"):
-            with st.spinner("Computing neighborhood enrichment..."):
-                fig = spatial_viz_manager.plot_neighborhood_enrichment(
-                    adata,
-                    cluster_key=selected_cluster_key
-                )
-                if fig:
-                    with col1:
-                        st.pyplot(fig)
-                    plt.close(fig)
-                    st.success(f"✅ Neighborhood enrichment computed")
+    # Cluster key options
+    cluster_key_options = ['celltype'] + [col for col in adata.obs.columns if col != 'celltype']
+    selected_cluster_key = st.selectbox("Cluster key:", cluster_key_options, key="squidpy_cluster_key")
+    
+    # Generate analysis automatically when data is loaded
+    with st.spinner("Computing neighborhood enrichment..."):
+        fig = spatial_viz_manager.plot_neighborhood_enrichment(
+            adata,
+            cluster_key=selected_cluster_key
+        )
+        if fig:
+            st.pyplot(fig)
+            plt.close(fig)
+            st.success(f"✅ Neighborhood enrichment computed")
+        else:
+            st.warning("Could not compute neighborhood enrichment. This may require specific data structure.")
 else:
     st.info("💡 Install squidpy to enable neighborhood enrichment analysis: `pip install squidpy`")
 
@@ -261,16 +254,23 @@ if tissuumap_index.exists():
     st.markdown("---")
     st.markdown("### 🗺️ Interactive Tissuumap")
     
+    # Embed the tissuumap HTML file
+    with open(tissuumap_index, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    
+    # Display the tissuumap
+    st.components.v1.html(html_content, height=600, scrolling=True)
 
 # Gene Expression Spatial Plot
 if SQUIDPY_AVAILABLE:
     st.subheader("🧬 Gene Expression Spatial Plot")
     
-    col1, col2 = st.columns([3, 1])
+    # Gene selection settings above the figure
+    st.markdown("### Gene Selection")
     
-    with col2:
-        st.markdown("### Gene Selection")
-        
+    col1, col2 = st.columns(2)
+    
+    with col1:
         # Get available genes
         available_genes = list(adata.var_names[:20])  # First 20 genes for performance
         selected_genes = st.multiselect(
@@ -279,66 +279,71 @@ if SQUIDPY_AVAILABLE:
             default=available_genes[:2] if len(available_genes) >= 2 else available_genes,
             key="spatial_genes"
         )
-        
+    
+    with col2:
         # Point size
         gene_point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="gene_point_size")
-        
-        # Generate plot button
-        if st.button("Generate Gene Expression Plot", key="generate_gene_plot"):
-            if selected_genes:
-                with st.spinner("Generating gene expression spatial plot..."):
-                    fig = spatial_viz_manager.plot_gene_expression_spatial(
-                        adata,
-                        genes=selected_genes,
-                        size=gene_point_size,
-                        title=f"Gene Expression in Space - {selected_sample}"
-                    )
-                    if fig:
-                        with col1:
-                            st.pyplot(fig)
-                        plt.close(fig)
+    
+    # Generate plot automatically when genes are selected
+    if selected_genes:
+        with st.spinner("Generating gene expression spatial plot..."):
+            fig = spatial_viz_manager.plot_gene_expression_spatial(
+                adata,
+                genes=selected_genes,
+                size=gene_point_size,
+                title=f"Gene Expression in Space - {selected_sample}"
+            )
+            if fig:
+                st.pyplot(fig)
+                plt.close(fig)
             else:
-                st.warning("Please select at least one gene")
+                st.warning("Could not generate gene expression plot. Check if spatial coordinates are available.")
+    else:
+        st.info("Please select at least one gene to generate the plot")
+else:
+    st.info("💡 Install squidpy to enable gene expression spatial analysis: `pip install squidpy`")
 
 # Spatial Statistics Dashboard
 if SQUIDPY_AVAILABLE:
     st.subheader("📊 Spatial Statistics Dashboard")
     
-    col1, col2 = st.columns([3, 1])
+    # Statistics settings above the figure
+    st.markdown("### Statistics Settings")
     
-    with col2:
-        st.markdown("### Statistics Settings")
+    # Cluster key for statistics
+    stats_cluster_key = st.selectbox("Cluster key for statistics:", cluster_key_options, key="stats_cluster_key")
+    
+    # Generate statistics automatically when data is loaded
+    with st.spinner("Computing spatial statistics..."):
+        # Compute statistics
+        stats = spatial_viz_manager.compute_spatial_statistics(adata, cluster_key=stats_cluster_key)
+        if stats:
+            st.json(stats)
         
-        # Cluster key for statistics
-        stats_cluster_key = st.selectbox("Cluster key for statistics:", cluster_key_options, key="stats_cluster_key")
-        
-        # Generate statistics button
-        if st.button("Generate Spatial Statistics", key="generate_stats"):
-            with st.spinner("Computing spatial statistics..."):
-                # Compute statistics
-                stats = spatial_viz_manager.compute_spatial_statistics(adata, cluster_key=stats_cluster_key)
-                if stats:
-                    st.json(stats)
-                
-                # Create statistics plot
-                fig = spatial_viz_manager.plot_spatial_statistics(
-                    adata,
-                    cluster_key=stats_cluster_key,
-                    title=f"Spatial Statistics - {selected_sample}"
-                )
-                if fig:
-                    with col1:
-                        st.pyplot(fig)
-                    plt.close(fig)
+        # Create statistics plot
+        fig = spatial_viz_manager.plot_spatial_statistics(
+            adata,
+            cluster_key=stats_cluster_key,
+            title=f"Spatial Statistics - {selected_sample}"
+        )
+        if fig:
+            st.pyplot(fig)
+            plt.close(fig)
+        else:
+            st.warning("Could not generate spatial statistics. This may require specific data structure.")
 
 # Multiple Spatial Plots Comparison
 if SQUIDPY_AVAILABLE:
     st.subheader("🔄 Multiple Spatial Plots Comparison")
     
-    col1, col2 = st.columns([3, 1])
+    # Comparison settings above the figure
+    st.markdown("### Comparison Settings")
     
-    with col2:
-        st.markdown("### Comparison Settings")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Define color options for comparison (same as squidpy options)
+        color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
         
         # Select multiple color options for comparison
         multiple_color_options = st.multiselect(
@@ -347,57 +352,54 @@ if SQUIDPY_AVAILABLE:
             default=color_options[:3] if len(color_options) >= 3 else color_options,
             key="multiple_colors"
         )
-        
+    
+    with col2:
         # Point size for multiple plots
         multi_point_size = st.slider("Point size:", min_value=1, max_value=50, value=15, key="multi_point_size")
-        
+    
+    with col3:
         # Number of columns
         n_cols = st.selectbox("Number of columns:", [1, 2, 3], index=1, key="n_cols")
-        
-        # Generate comparison plots button
-        if st.button("Generate Comparison Plots", key="generate_comparison"):
-            if multiple_color_options:
-                with st.spinner("Generating multiple spatial plots..."):
-                    fig = spatial_viz_manager.plot_multiple_spatial_scatters(
-                        adata,
-                        color_options=multiple_color_options,
-                        size=multi_point_size,
-                        n_cols=n_cols,
-                        title=f"Multiple Spatial Visualizations - {selected_sample}"
-                    )
-                    if fig:
-                        with col1:
-                            st.pyplot(fig)
-                        plt.close(fig)
+    
+    # Generate comparison plots automatically when annotations are selected
+    if multiple_color_options:
+        with st.spinner("Generating multiple spatial plots..."):
+            fig = spatial_viz_manager.plot_multiple_spatial_scatters(
+                adata,
+                color_options=multiple_color_options,
+                size=multi_point_size,
+                n_cols=n_cols,
+                title=f"Multiple Spatial Visualizations - {selected_sample}"
+            )
+            if fig:
+                st.pyplot(fig)
+                plt.close(fig)
             else:
-                st.warning("Please select at least one annotation for comparison")
+                st.warning("Could not generate comparison plots. Check if spatial coordinates are available.")
+    else:
+        st.info("Please select at least one annotation for comparison")
 
 # Cell Type Proportion Plot
 st.subheader("🥧 Cell Type Proportion")
 
-col1, col2 = st.columns([3, 1])
+# Sample selection above the figure
+sample_options = ['E12', 'E14', 'E17']
+selected_sample_day = st.selectbox("Select sample day:", sample_options, index=sample_options.index(selected_sample), key="spatial_proportion")
 
-with col1:
-    sample_options = ['E12', 'E14', 'E17']
-    selected_sample_day = st.selectbox("Select sample day:", sample_options, index=sample_options.index(selected_sample), key="spatial_proportion")
-    
-    proportion_fig = viz_manager.plot_celltype_proportion(adata, selected_sample_day, title="Cell Type Proportion")
-    if proportion_fig:
-        st.plotly_chart(proportion_fig, use_container_width=True)
+proportion_fig = viz_manager.plot_celltype_proportion(adata, selected_sample_day, title="Cell Type Proportion")
+if proportion_fig:
+    st.plotly_chart(proportion_fig, use_container_width=True)
 
 # UMAP Plot
 st.subheader("📊 UMAP Plot")
 
-col1, col2 = st.columns([3, 1])
+# Grouping selection above the figure
+groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col != 'active.ident']
+selected_groupby = st.selectbox("Group by:", groupby_options, key="spatial_umap_groupby")
 
-with col1:
-    # Get available grouping variables
-    groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col != 'active.ident']
-    selected_groupby = st.selectbox("Group by:", groupby_options, key="spatial_umap_groupby")
-    
-    umap_fig = viz_manager.plot_umap(adata, groupby=selected_groupby, title=f"UMAP - {selected_sample}")
-    if umap_fig:
-        st.plotly_chart(umap_fig, use_container_width=True)
+umap_fig = viz_manager.plot_umap(adata, groupby=selected_groupby, title=f"UMAP - {selected_sample}")
+if umap_fig:
+    st.plotly_chart(umap_fig, use_container_width=True)
 
 # Data information sidebar
 with col2:
