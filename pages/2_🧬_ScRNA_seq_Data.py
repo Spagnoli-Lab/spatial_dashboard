@@ -113,7 +113,7 @@ else:
     st.sidebar.error("❌ No data loaded")
 
 # Show information about the data source
-st.sidebar.info(f"📁 Data source: Cartana.h5ad\n🔍 Filtered by: orig.ident")
+st.sidebar.info(f"📁 Data source: Cartana_simplified.h5ad\n🔍 Filtered by: orig.ident")
 
 # Manual reload button
 if st.sidebar.button("🔄 Reload All Data"):
@@ -160,13 +160,6 @@ with col4:
     else:
         st.metric("Avg Genes/Cell", "N/A")
 
-# Debug information (can be removed later)
-with st.expander("🔍 Debug Info"):
-    st.write("**Available obs columns:**", list(adata.obs.columns))
-    st.write("**Available var columns:**", list(adata.var.columns))
-    st.write("**Data shape:**", adata.shape)
-    st.write("**Data type:**", type(adata.X))
-
 # UMAP Plot
 st.subheader("📊 UMAP Plot")
 
@@ -177,6 +170,20 @@ selected_groupby = st.selectbox("Group by:", groupby_options, key="umap_groupby"
 umap_fig = viz_manager.plot_umap(adata, groupby=selected_groupby, title=f"UMAP - {sample_display_name}")
 if umap_fig:
     st.plotly_chart(umap_fig, use_container_width=True)
+
+# Violin Plot
+st.subheader("Violin Plot")
+
+# Get available grouping variables
+feature_options = ['nCount_SCT'] + [col for col in adata.obs.columns if col != 'nCount_SCT']
+groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col != 'active.ident']
+
+selected_feature = st.selectbox("Feature:", feature_options, key="violin_feature")
+selected_groupby = st.selectbox("Group by:", groupby_options, key="violin_groupby")
+
+violin_fig = viz_manager.plot_violinplot(adata, groupby=selected_groupby, feature = selected_feature,title=f"Violin Plot - {sample_display_name}")
+if violin_fig:
+    st.plotly_chart(violin_fig, use_container_width=True)
 
 # Dot Plot
 st.subheader("🔴 Dot Plot")
