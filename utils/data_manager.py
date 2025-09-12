@@ -36,7 +36,7 @@ class DataManager:
         """Load scRNA-seq data for specific sample"""
         try:
             # Specific path for Cartana.h5ad file
-            cartana_path = self.scrna_data_dir / "Cartana.h5ad"
+            cartana_path = self.scrna_data_dir / "Cartana_simplified.h5ad"
             
             # Check if Cartana.h5ad exists and load it
             if cartana_path.exists():

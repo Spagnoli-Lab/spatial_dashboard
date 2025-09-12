@@ -11,6 +11,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import anndata
+import matplotlib.pyplot as plt
+import scanpy as sc
 
 class VisualizationManager:
     """Manages visualizations for all data types"""
@@ -48,7 +50,32 @@ class VisualizationManager:
         except Exception as e:
             st.error(f"Error creating UMAP plot: {e}")
             return None
-    
+
+    @staticmethod
+    def plot_violinplot(adata, groupby="active.ident", feature="nCount_SCT",title="Violin Plot"):
+        """Create violin plot"""
+        try:
+            if groupby in adata.obs.columns and feature in adata.obs.columns:
+                keys = [feature]
+                fig = sc.pl.violin(
+                    adata,
+                    keys=keys,
+                    groupby=groupby,
+                    rotation=90,
+                    show=False
+                )
+
+                # Get the current figure and return it
+                fig = plt.gcf()  # Get current figure
+                
+                st.pyplot(fig)
+            else:
+                st.warning("Check that 'groupby' is in adata.obs and 'objects' is a valid obs column or gene.")
+
+        except Exception as e:
+            st.error(f"Error creating violin plot: {e}")
+            return None
+
     @staticmethod
     def plot_dotplot(adata, groupby="active.ident", genes=None, title="Dot Plot"):
         """Create dot plot"""
