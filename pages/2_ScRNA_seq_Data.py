@@ -40,8 +40,7 @@ data_manager, viz_manager = get_managers()
 # Sidebar
 st.sidebar.title("🧬 ScRNA-seq Analysis")
 
-# Sample selection
-st.sidebar.header("📁 Sample Selection")
+# Sample selection (removed UI; use all available samples)
 available_samples = data_manager.get_scrna_sample_options()
 
 if not available_samples:
@@ -49,46 +48,10 @@ if not available_samples:
     st.info("Please ensure your data files contain sample identifiers")
     st.stop()
 
-# Sample selection with checkboxes
-st.sidebar.subheader("Selected Samples:")
-
-# Quick selection buttons
-if st.button("✅ Select All"):
-    st.session_state.selected_samples = available_samples.copy()
-    st.rerun()
-
-if st.button("❌ Deselect All"):
-    st.session_state.selected_samples = []
-    st.rerun()
-
-# Initialize selected_samples in session state if not exists
-if 'selected_samples' not in st.session_state:
-    st.session_state.selected_samples = []
-
-# Individual sample checkboxes
-#st.sidebar.write("**Individual Samples:**")
-for sample in available_samples:
-    if st.checkbox(
-        sample, 
-        value=sample in st.session_state.selected_samples,
-        key=f"sample_{sample}"
-    ):
-        if sample not in st.session_state.selected_samples:
-            st.session_state.selected_samples.append(sample)
-    else:
-        if sample in st.session_state.selected_samples:
-            st.session_state.selected_samples.remove(sample)
-
-# Get the selected samples
-selected_samples = st.session_state.selected_samples
-
-# Show selected samples
-if selected_samples:
-    st.sidebar.success(f"✅ {', '.join(selected_samples)}")
-else:
-    st.sidebar.warning("⚠️ No samples selected")
-    st.info("Please select at least one sample to continue")
-    st.stop()
+# Automatically include all available samples
+selected_samples = available_samples.copy()
+st.sidebar.header("📁 Samples")
+st.sidebar.success(f"Using all samples: {', '.join(selected_samples)}")
 
 # Data status and loading
 st.sidebar.header("📊 Data Status")
@@ -172,7 +135,7 @@ if umap_fig:
     st.plotly_chart(umap_fig, use_container_width=True)
 
 # Violin Plot
-st.subheader("Violin Plot")
+st.subheader("Violin Plot (Scanpy vs Plotly)")
 
 # Get available grouping variables
 feature_options = ['nCount_SCT'] + [col for col in adata.obs.columns if col != 'nCount_SCT']
@@ -181,9 +144,25 @@ groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col !=
 selected_feature = st.selectbox("Feature:", feature_options, key="violin_feature")
 selected_groupby = st.selectbox("Group by:", groupby_options, key="violin_groupby")
 
-violin_fig = viz_manager.plot_violinplot(adata, groupby=selected_groupby, feature = selected_feature,title=f"Violin Plot - {sample_display_name}")
-if violin_fig:
-    st.plotly_chart(violin_fig, use_container_width=True)
+# Full-width: Scanpy then Plotly
+st.caption("Scanpy violin (static)")
+# This helper renders directly via st.pyplot
+viz_manager.plot_violinplot(
+    adata,
+    groupby=selected_groupby,
+    feature=selected_feature,
+    title=f"Violin Plot - {sample_display_name}"
+)
+
+st.caption("Plotly violin (interactive)")
+violin_plotly = viz_manager.plot_violinplot_plotly(
+    adata,
+    groupby=selected_groupby,
+    feature=selected_feature,
+    title=f"Violin Plot - {sample_display_name}"
+)
+if violin_plotly:
+    st.plotly_chart(violin_plotly, use_container_width=True)
 
 # Dot Plot
 st.subheader("🔴 Dot Plot")
@@ -215,22 +194,16 @@ if gene_list:
 else:
     st.warning("⚠️ No genes selected for dot plot")
 
-# Create dot plot using scanpy
+# Create Plotly dot plot (VisualizationManager)
 if gene_list and selected_groupby in adata.obs.columns:
-    
-    # Import scanpy for plotting
-    import scanpy as sc
-    
-    # Create the dot plot
-    fig, ax = plt.subplots(figsize=(12, 8))
-    sc.pl.dotplot(adata, gene_list, groupby=selected_groupby, ax=ax, show=False)
-    
-    # Display the plot
-    st.pyplot(fig)
-    plt.close(fig)
-    
-    # Show plot info
-    st.info(f"Dot plot showing {len(gene_list)} genes grouped by '{selected_groupby}'")
+    plotly_fig = viz_manager.plot_dotplot(
+        adata,
+        groupby=selected_groupby,
+        genes=gene_list
+    )
+    if plotly_fig:
+        st.plotly_chart(plotly_fig, use_container_width=True)
+    st.info(f"Dot plot shows {len(gene_list)} genes grouped by '{selected_groupby}'")
 elif not gene_list:
     st.info("Please select genes to create the dot plot")
 else:
