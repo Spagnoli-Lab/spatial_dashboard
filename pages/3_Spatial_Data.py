@@ -157,7 +157,7 @@ st.subheader("DAPI image and Spatial Scatter")
 img_col, plot_col = st.columns(2)
 
 with img_col:
-    st.markdown("#### DAPI image")
+    st.markdown("#### Masked DAPI image")
 
     # Load the matching DAPI image for the selected sample
     image_path = data_manager.get_dapi_image_path(selected_sample)
@@ -167,14 +167,14 @@ with img_col:
             arr = tiff.imread(str(image_path))
 
             # If 16-bit grayscale, normalize to 0–255 for display
-            if arr.dtype == np.uint16:
+            if arr.dtype == np.uint16 and arr.max() > 0:
                 arr = (arr.astype(np.float32) / arr.max() * 255).astype(np.uint8)
 
             st.image(arr, caption=image_path.name, use_container_width=True, clamp=True)
         except Exception as e:
             st.write("tifffile could not read this TIFF:", e)
     else:
-        st.info("No DAPI image found for this sample.")
+        st.info("No masked DAPI image found for this sample.")
 
 with plot_col:
     if SQUIDPY_AVAILABLE:
