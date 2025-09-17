@@ -278,7 +278,11 @@ class DataManager:
         return directories
 
     def get_dapi_image_path(self, sample: str) -> Optional[Path]:
-        """Return the DAPI image path for a spatial sample if available."""
+        """Return the DAPI image path for a spatial sample if available.
+
+        Masked DAPI images (``*_masked.tif``) are preferred when both masked and
+        unmasked variants are present within a directory.
+        """
         if not sample:
             return None
 
@@ -312,6 +316,8 @@ class DataManager:
                     continue
 
                 score = 0.0
+                if '_MASKED' in name_upper:
+                    score += 50.0  # Prefer masked imagery when available
                 for token in tokens:
                     if token and token in name_upper:
                         score += len(token)
