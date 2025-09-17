@@ -77,7 +77,32 @@ class VisualizationManager:
             return None
 
     @staticmethod
-    def plot_dotplot(adata, groupby="active.ident", genes=None, title="Dot Plot"):
+    def plot_violinplot_plotly(adata, groupby="active.ident", feature="nCount_SCT", title="Violin Plot"):
+        """Create violin plot using Plotly (interactive)"""
+        try:
+            if groupby not in adata.obs.columns or feature not in adata.obs.columns:
+                st.warning("Check that 'groupby' and 'feature' exist in adata.obs.")
+                return None
+            df = pd.DataFrame({
+                groupby: adata.obs[groupby].astype(str).values,
+                feature: adata.obs[feature].values
+            })
+            fig = px.violin(
+                df,
+                x=groupby,
+                y=feature,
+                color=groupby,
+                title=title
+            )
+
+            fig.update_layout(height=600, showlegend=False)
+            return fig
+        except Exception as e:
+            st.error(f"Error creating Plotly violin plot: {e}")
+            return None
+
+    @staticmethod
+    def plot_dotplot(adata, groupby="active.ident", genes=None):
         """Create dot plot"""
         try:
             if genes is None:
@@ -124,7 +149,6 @@ class VisualizationManager:
                     y='Gene',
                     size='Percent_Expressed',
                     color='Mean_Expression',
-                    title=title,
                     color_continuous_scale='viridis',
                     size_max=20
                 )
