@@ -35,6 +35,8 @@ class DataManager:
         self._spatial_catalog: Optional[Dict[str, Dict]] = None
         self._spatial_alias_map: Dict[str, str] = {}
         self._dapi_cache: Dict[str, Optional[Path]] = {}
+        self._tangram_catalog: Optional[Dict[str, Dict]] = None
+        self._tangram_alias_map: Dict[str, str] = {}
 
     def _infer_spatial_metadata(self, file_path: Path) -> Tuple[str, str, List[str], str]:
         """Infer spatial sample identifiers and metadata from a file path."""
@@ -140,6 +142,60 @@ class DataManager:
             self._spatial_catalog = self._build_spatial_catalog()
         return self._spatial_catalog
 
+    def _build_tangram_catalog(self) -> Dict[str, Dict]:
+        """Build a catalog of available Tangram datasets."""
+        catalog: Dict[str, Dict] = {}
+
+        candidate_paths = sorted(self.tangram_data_dir.rglob("*.h5ad"))
+
+        for file_path in candidate_paths:
+            if not file_path.is_file():
+                continue
+
+            if any(part.lower() == "scrna-seq" for part in file_path.parts):
+                continue
+
+            if "tangram" not in file_path.name.lower():
+                continue
+
+            primary_sample, display_name, aliases, _ = self._infer_spatial_metadata(file_path)
+            data_type = "tangram"
+
+            key = primary_sample or file_path.stem
+            base_key = key
+            counter = 2
+            while key in catalog:
+                key = f"{base_key}_{counter}"
+                counter += 1
+
+            alias_values = set(aliases)
+            alias_values.update(filter(None, [primary_sample, file_path.stem, file_path.name, key]))
+
+            entry = {
+                "key": key,
+                "primary_sample": primary_sample,
+                "display_name": display_name,
+                "aliases": sorted(alias_values),
+                "data_type": data_type,
+                "path": file_path,
+                "file_name": file_path.name,
+                "file_stem": file_path.stem,
+            }
+            catalog[key] = entry
+
+        return catalog
+
+    def refresh_tangram_catalog(self):
+        """Force rebuilding of the Tangram catalog on next access."""
+        self._tangram_catalog = None
+        self._tangram_alias_map.clear()
+
+    def get_tangram_catalog(self) -> Dict[str, Dict]:
+        """Return the cached Tangram catalog, rebuilding if needed."""
+        if self._tangram_catalog is None:
+            self._tangram_catalog = self._build_tangram_catalog()
+        return self._tangram_catalog
+
     def _finalize_spatial_dataset(self, adata: anndata.AnnData) -> anndata.AnnData:
         """Ensure spatial coordinates and basic metrics are present."""
         if 'spatial' in adata.obsm:
@@ -160,6 +216,25 @@ class DataManager:
         adata.obs['total_counts'] = np.sum(adata.X, axis=1)
         adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
         return adata
+
+    def _register_tangram_aliases(self, canonical_key: str, entry: Dict, extra_alias: Optional[str] = None):
+        """Update alias bookkeeping for loaded Tangram datasets."""
+        if not canonical_key:
+            return
+
+        alias_values = set(entry.get("aliases", []))
+        alias_values.update({
+            canonical_key,
+            entry.get("primary_sample"),
+            entry.get("file_stem"),
+            entry.get("file_name"),
+            extra_alias,
+        })
+
+        for alias in alias_values:
+            if not alias:
+                continue
+            self._tangram_alias_map[alias.lower()] = canonical_key
 
     def _resolve_spatial_entry(self, sample: str) -> Optional[Dict]:
         """Resolve a sample identifier to a catalog entry."""
@@ -185,6 +260,36 @@ class DataManager:
                     return entry
 
         return None
+    def _resolve_tangram_entry(self, sample: str) -> Optional[Dict]:
+        """Resolve a Tangram sample identifier to a catalog entry."""
+        if not sample:
+            return None
+
+        catalog = self.get_tangram_catalog()
+
+        if sample in catalog:
+            return catalog[sample]
+
+        sample_lower = sample.lower()
+
+        alias_key = self._tangram_alias_map.get(sample_lower)
+        if alias_key and alias_key in catalog:
+            return catalog[alias_key]
+
+        for entry in catalog.values():
+            candidate_aliases = [
+                entry.get("key"),
+                entry.get("primary_sample"),
+                entry.get("file_stem"),
+                entry.get("file_name"),
+            ] + entry.get("aliases", [])
+
+            for alias in candidate_aliases:
+                if alias and alias.lower() == sample_lower:
+                    return entry
+
+        return None
+
 
     def _register_spatial_aliases(self, canonical_key: str, entry: Dict, extra_alias: Optional[str] = None):
         """Update alias bookkeeping for loaded spatial datasets."""
@@ -460,30 +565,68 @@ class DataManager:
             return None
     
     def load_tangram_data(self, sample: str) -> anndata.AnnData:
-        """Load Tangram data for specific sample"""
+        """Load Tangram data for specific sample."""
         try:
-            # Look for Tangram files for the specific sample
-            sample_files = list(self.tangram_data_dir.glob(f"*{sample}*tangram*.h5ad"))
-            if not sample_files:
-                sample_files = list(self.tangram_data_dir.glob(f"*{sample}*Tangram*.h5ad"))
-            
-            if sample_files:
-                file_path = str(sample_files[0])
-                adata = anndata.read_h5ad(file_path)
-                
-                # Calculate quality metrics
-                adata.obs['total_counts'] = np.sum(adata.X, axis=1)
-                adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
-                
-                self.tangram_data[sample] = adata
-                return adata
+            catalog_entry = self._resolve_tangram_entry(sample)
+            if catalog_entry is None:
+                self.refresh_tangram_catalog()
+                catalog_entry = self._resolve_tangram_entry(sample)
+
+            file_path: Optional[Path] = None
+            if catalog_entry:
+                file_path = Path(catalog_entry["path"])
             else:
+                sample_files = list(self.tangram_data_dir.glob(f"*{sample}*tangram*.h5ad"))
+                if not sample_files:
+                    sample_files = list(self.tangram_data_dir.glob(f"*{sample}*Tangram*.h5ad"))
+                if sample_files:
+                    file_path = Path(sample_files[0])
+                    catalog_entry = {
+                        "key": sample,
+                        "primary_sample": sample,
+                        "display_name": sample,
+                        "aliases": [sample],
+                        "data_type": "tangram",
+                        "path": file_path,
+                        "file_name": file_path.name,
+                        "file_stem": file_path.stem,
+                    }
+
+            if file_path is None or not file_path.exists():
                 st.error(f"No Tangram data found for sample {sample}")
                 return None
+
+            adata = anndata.read_h5ad(str(file_path))
+
+            adata.obs["total_counts"] = np.asarray(np.sum(adata.X, axis=1)).ravel()
+            adata.obs["n_genes_by_counts"] = np.asarray(np.sum(adata.X > 0, axis=1)).ravel()
+
+            store_key = catalog_entry.get("key", sample) if catalog_entry else sample
+            self.tangram_data[store_key] = adata
+
+            if catalog_entry:
+                self._register_tangram_aliases(store_key, catalog_entry, extra_alias=sample)
+                if self._tangram_catalog is not None and store_key not in self._tangram_catalog:
+                    self._tangram_catalog[store_key] = catalog_entry
+
+            return adata
         except Exception as e:
             st.error(f"Error loading Tangram data for {sample}: {e}")
             return None
-    
+
+
+    def get_available_tangram_samples(self) -> List[str]:
+        """Get list of available samples for Tangram datasets."""
+        catalog = self.get_tangram_catalog()
+        if catalog:
+            sorted_entries = sorted(
+                catalog.values(),
+                key=lambda entry: entry.get("display_name", entry.get("key", "")).lower()
+            )
+            return [entry["key"] for entry in sorted_entries]
+
+        return []
+
     def get_available_samples(self) -> List[str]:
         """Get list of available samples (E12, E14, E17) for spatial data"""
         catalog = self.get_spatial_catalog()
