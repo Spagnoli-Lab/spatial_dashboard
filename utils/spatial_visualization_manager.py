@@ -12,6 +12,7 @@ import seaborn as sns
 import anndata
 from pathlib import Path
 import sys
+from typing import Optional, Tuple
 
 # Try to import squidpy
 try:
@@ -30,7 +31,14 @@ class SpatialVisualizationManager:
             st.warning("⚠️ Squidpy not available. Please install with: pip install squidpy")
     
     @staticmethod
-    def plot_spatial_scatter(adata, color=None, size=20, shape=None, title="Spatial Scatter Plot"):
+    def plot_spatial_scatter(
+        adata,
+        color=None,
+        size=20,
+        shape=None,
+        title="Spatial Scatter Plot",
+        figsize: Optional[Tuple[float, float]] = None,
+    ):
         """
         Create spatial scatter plot using squidpy
         
@@ -46,6 +54,8 @@ class SpatialVisualizationManager:
             Point shape (None, 'circle', 'square', 'triangle')
         title : str
             Plot title
+        figsize : tuple(float, float), optional
+            Figure size in inches (width, height)
         """
         if not SQUIDPY_AVAILABLE:
             st.error("Squidpy is required for spatial scatter plots")
@@ -58,7 +68,8 @@ class SpatialVisualizationManager:
                 return None
             
             # Create the plot
-            fig, ax = plt.subplots(figsize=(10, 8))
+            resolved_size = figsize if figsize else (6.0, 6.0)
+            fig, ax = plt.subplots(figsize=resolved_size)
             
             # Add spatial key to uns if not present
             if 'spatial' not in adata.uns:
@@ -83,7 +94,12 @@ class SpatialVisualizationManager:
             return None
     
     @staticmethod
-    def plot_neighborhood_enrichment(adata, cluster_key="celltype"):
+    def plot_neighborhood_enrichment(
+        adata,
+        cluster_key: str = "celltype",
+        figsize: Optional[Tuple[float, float]] = None,
+        dpi: int = 110,
+    ):
         """
         Create neighborhood enrichment plot using squidpy
         
@@ -121,27 +137,50 @@ class SpatialVisualizationManager:
                     sq.gr.spatial_neighbors(adata, coord_type="generic", radius=200, delaunay=True)
             
             # Compute neighborhood enrichment
-            with st.spinner("Computing neighborhood enrichment..."):
-                sq.gr.nhood_enrichment(
-                    adata,
-                    cluster_key=cluster_key
-                )
+            #sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
             
             # Create the plot
-            fig, ax = plt.subplots(figsize=(10, 8))
+            #fig, ax = plt.subplots(figsize=(5, 4))
             
+            # Compute neighborhood enrichment
+            sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
 
+            # Resolve desired figure size
+            if figsize is None:
+                fig_width, fig_height = (8.0, 8.0)
+            else:
+                fig_width, fig_height = figsize
+
+            # Let squidpy create the axes but control overall scale via figsize/dpi
+            fig, ax = plt.subplots(figsize=(fig_width, fig_height))
             sq.pl.nhood_enrichment(
                 adata,
                 cluster_key=cluster_key,
                 cmap="coolwarm",
+                title="Neighborhood enrichment",
+                #figsize=(fig_width, fig_height),
                 annotate=True,
+                cbar_kwargs={"shrink": 0.7},
                 ax=ax
             )
-            
-            #ax.set_title(title)
-            plt.tight_layout()
-            
+
+            # Apply consistent font sizing after squidpy draws the heatmap
+            #ax.set_title(ax.get_title(), fontsize=12)
+            #ax.tick_params(axis="both", which="major", labelsize=8)
+            #for label in ax.get_xticklabels():
+            #    label.set_fontsize(8)
+            #    label.set_rotation(45)
+            #    label.set_horizontalalignment("right")
+            #for label in ax.get_yticklabels():
+            #    label.set_fontsize(8)
+            # Resize colourbar typography if present
+            #if len(fig.axes) > 1:
+            #    colorbar_ax = fig.axes[-1]
+            #    colorbar_ax.tick_params(labelsize=8)
+            #    if colorbar_ax.get_title():
+            #        colorbar_ax.set_title(colorbar_ax.get_title(), fontsize=10)
+            #plt.tight_layout()
+
             return fig
             
         except Exception as e:
@@ -149,7 +188,13 @@ class SpatialVisualizationManager:
             return None
     
     @staticmethod
-    def plot_gene_expression_spatial(adata, genes, size=20, title="Gene Expression Spatial Plot"):
+    def plot_gene_expression_spatial(
+        adata,
+        genes,
+        size=20,
+        title="Gene Expression Spatial Plot",
+        figsize: Optional[Tuple[float, float]] = None,
+    ):
         """
         Create spatial scatter plot colored by gene expression
         
@@ -163,6 +208,8 @@ class SpatialVisualizationManager:
             Point size
         title : str
             Plot title
+        figsize : tuple(float, float), optional
+            Figure size in inches (width, height)
         """
         if not SQUIDPY_AVAILABLE:
             st.error("Squidpy is required for spatial gene expression plots")
@@ -188,7 +235,8 @@ class SpatialVisualizationManager:
             print("Available genes for color:", available_genes)
 
             # Create the plot
-            fig, ax = plt.subplots(figsize=(10, 8))
+            resolved_size = figsize if figsize else (6.0, 6.0)
+            fig, ax = plt.subplots(figsize=resolved_size)
             
             # Add spatial key to uns if not present
             # Add spatial key to uns if not present

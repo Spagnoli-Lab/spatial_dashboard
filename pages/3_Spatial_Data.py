@@ -13,6 +13,7 @@ import sys
 import matplotlib.pyplot as plt
 import tifffile as tiff
 from PIL import Image
+from io import BytesIO
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
@@ -58,25 +59,25 @@ st.sidebar.title("🗺️ Spatial Data Analysis")
 st.sidebar.header("📁 Sample Selection")
 st.sidebar.info(f"Data directory: {data_manager.spatial_data_dir}")
 
-spatial_catalog = data_manager.get_spatial_catalog()
-available_samples = data_manager.get_available_samples()
+registered_catalog = data_manager.get_registered_catalog()
+available_samples = data_manager.get_available_registered_samples()
 
 if not available_samples:
     st.sidebar.error("No spatial datasets detected in the catalog")
     st.info("Please add spatial .h5ad files to the data directory and reload the app.")
     st.stop()
 
-sample_labels = [spatial_catalog.get(key, {}).get("display_name", key) for key in available_samples]
+sample_labels = [registered_catalog.get(key, {}).get("display_name", key) for key in available_samples]
 st.sidebar.caption("Available samples: " + ", ".join(sample_labels))
 
 selected_sample = st.sidebar.selectbox(
     "Select Sample:",
     available_samples,
-    format_func=lambda key: spatial_catalog.get(key, {}).get("display_name", key),
+    format_func=lambda key: registered_catalog.get(key, {}).get("display_name", key),
     help="Choose the spatial dataset to analyze"
 )
 
-selected_entry = spatial_catalog.get(selected_sample)
+selected_entry = registered_catalog.get(selected_sample)
 if not selected_entry:
     st.sidebar.error("Selected sample is missing from the catalog. Please reload the app.")
     st.stop()
@@ -87,7 +88,7 @@ sample_display = selected_entry.get("display_name", selected_sample)
 st.sidebar.header("📊 Data Status")
 
 # Show current data status
-loaded_spatial = data_manager.get_spatial_dataset(selected_sample)
+loaded_spatial = data_manager.get_registered_dataset(selected_sample, finalized=True)
 if loaded_spatial is not None:
     st.sidebar.success(f"✅ Spatial\n{loaded_spatial.n_obs} cells")
 else:
@@ -97,7 +98,7 @@ else:
 if loaded_spatial is None:
     with st.spinner(f"Loading spatial data for {sample_display}..."):
         try:
-            loaded_spatial = data_manager.load_spatial_data(selected_sample)
+            loaded_spatial = data_manager.load_registered_data(selected_sample, finalize=True)
         except Exception as e:
             st.error(f"Error loading data: {e}")
             st.info("Please restart the app to use the updated DataManager")
@@ -110,7 +111,7 @@ if loaded_spatial is None:
 # Manual reload button
 if st.sidebar.button("🔄 Reload Data"):
     with st.spinner(f"Reloading spatial data for {sample_display}..."):
-        reloaded = data_manager.load_spatial_data(selected_sample)
+        reloaded = data_manager.load_registered_data(selected_sample, finalize=True)
         if reloaded is not None:
             st.sidebar.success(f"Reloaded {reloaded.n_obs} cells")
         else:
@@ -123,12 +124,11 @@ if SQUIDPY_AVAILABLE:
     - **Spatial Scatter Plots**: Color by annotations
     - **Neighborhood Enrichment**: Spatial relationships
     - **Gene Expression**: Spatial gene mapping
-    - **Multiple Plots**: Side-by-side comparison
     - **Spatial Statistics**: Comprehensive analysis
     """)
 
 # Main content
-adata = data_manager.get_spatial_dataset(selected_sample)
+adata = data_manager.get_registered_dataset(selected_sample, finalized=True)
 
 if adata is None:
     st.error(f"Failed to locate spatial data for {sample_display}")
@@ -137,76 +137,128 @@ if adata is None:
 st.title(f"🗺️ Spatial Data - {sample_display}")
 
 # Summary statistics
-col1, col2, col3, col4 = st.columns(4)
+#col1, col2, col3, col4 = st.columns(4)
 
-with col1:
-    st.metric("Cells", f"{adata.n_obs:,}")
-with col2:
-    st.metric("Genes", f"{adata.n_vars:,}")
-with col3:
-    st.metric("Avg Counts/Cell", f"{np.mean(adata.obs['total_counts']):.1f}")
-with col4:
-    if 'spatial_x' in adata.obs.columns:
-        st.metric("Spatial Coords", "Available")
-    else:
-        st.metric("Spatial Coords", "Not found")
+#with col1:
+#    st.metric("Cells", f"{adata.n_obs:,}")
+#with col2:
+#    st.metric("Genes", f"{adata.n_vars:,}")
+#with col3:
+#    st.metric("Avg Counts/Cell", f"{np.mean(adata.obs['total_counts']):.1f}")
+#with col4:
+#    if 'spatial_x' in adata.obs.columns:
+#st.metric("Spatial Coords", "Available")
+#    else:
+#        st.metric("Spatial Coords", "Not found")
 
 # DAPI image and Spatial Scatter side-by-side
 st.subheader("DAPI image and Spatial Scatter")
 
 if SQUIDPY_AVAILABLE:
+    image_path = data_manager.get_dapi_image_path(selected_sample)
+    dapi_image = None
+    dapi_read_error = None
+    if image_path and image_path.exists():
+        try:
+            dapi_image = tiff.imread(str(image_path))
 
-    img_col, plot_col = st.columns(2, gap="medium")
+            # If 16-bit grayscale, normalize to 0–255 for display
+            if dapi_image.dtype == np.uint16 and dapi_image.max() > 0:
+                dapi_image = (dapi_image.astype(np.float32) / dapi_image.max() * 255).astype(np.uint8)
+        except Exception as exc:
+            dapi_read_error = str(exc)
 
+    dapi_width_key = f"dapi_width_{selected_sample}"
+    dapi_default_width = 350
+    current_width = int(max(100, min(st.session_state.get(dapi_width_key, dapi_default_width), 2000)))
+
+    img_col, plot_col, setting_col = st.columns(3, gap="medium")
+    
+    with setting_col:
+        st.markdown("#### Plot Settings")
+
+        if dapi_image is not None:
+            current_width = st.slider(
+                "DAPI image width (px)",
+                min_value=100,
+                max_value=600,
+                value=current_width,
+                step=10,
+                key=dapi_width_key
+            )
+        elif dapi_read_error:
+            st.info("DAPI image detected but could not be read.")
+        else:
+            st.info("No DAPI image available for sizing.")
+
+        # Color options for squidpy
+        squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
+        squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
+
+        # Point size
+        point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
+
+        # Figure dimensions in inches
+        col_w, col_h = st.columns(2)
+        with col_w:
+            scatter_width = st.slider(
+                "Plot width (inches)",
+                min_value=3.0,
+                max_value=12.0,
+                value=6.0,
+                step=0.5,
+                key="squidpy_width"
+            )
+        with col_h:
+            scatter_height = st.slider(
+                "Plot height (inches)",
+                min_value=3.0,
+                max_value=12.0,
+                value=8.0,
+                step=0.5,
+                key="squidpy_height"
+            )
+            
     with img_col:
         st.markdown("#### Masked DAPI image")
 
-        # Load the matching DAPI image for the selected sample
-        image_path = data_manager.get_dapi_image_path(selected_sample)
-
-        if image_path and image_path.exists():
-            try:
-                arr = tiff.imread(str(image_path))
-
-                # If 16-bit grayscale, normalize to 0–255 for display
-                if arr.dtype == np.uint16 and arr.max() > 0:
-                    arr = (arr.astype(np.float32) / arr.max() * 255).astype(np.uint8)
-
-                st.image(arr, caption=image_path.name, use_container_width=True, clamp=True)
-            except Exception as e:
-                st.write("tifffile could not read this TIFF:", e)
+        if dapi_image is not None:
+            display_width = st.session_state.get(dapi_width_key, current_width)
+            display_width = int(max(100, min(display_width, 2000)))
+            st.image(dapi_image, caption=image_path.name, width=display_width, clamp=True)
+        elif image_path and image_path.exists():
+            if dapi_read_error:
+                st.info(f"Unable to display DAPI image: {dapi_read_error}")
+            else:
+                st.info("tifffile could not read this TIFF.")
         else:
             st.info("No masked DAPI image found for this sample.")
-
+    
+    
     with plot_col:
-        if SQUIDPY_AVAILABLE:
-            st.markdown("#### 🔬 Squidpy Spatial Scatter Plot")
+        st.markdown("#### Squidpy Spatial Scatter Plot")
 
-            st.markdown("##### Plot Settings")
-            
-            # Color options for squidpy
-            squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
-            squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
+        # Generate plot automatically when data is loaded
+        with st.spinner("Generating Squidpy spatial scatter plot..."):
+            fig = spatial_viz_manager.plot_spatial_scatter(
+                adata,
+                color=squidpy_color,
+                size=point_size,
+                title=f"Squidpy Spatial Scatter - {sample_display}",
+                figsize=(scatter_width, scatter_height)
+            )
+            if fig:
+                buffer = BytesIO()
+                fig.savefig(buffer, format="png", dpi=fig.dpi, bbox_inches="tight")
+                buffer.seek(0)
+                st.image(buffer, caption="Spatial scatter", clamp=True)
+                plt.close(fig)
+            else:
+                st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
+else:
+    st.info("💡 Install squidpy to enable advanced spatial analysis features: `pip install squidpy`")
 
-            # Point size
-            point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
 
-            # Generate plot automatically when data is loaded
-            with st.spinner("Generating Squidpy spatial scatter plot..."):
-                fig = spatial_viz_manager.plot_spatial_scatter(
-                    adata,
-                    color=squidpy_color,
-                    size=point_size,
-                    title=f"Squidpy Spatial Scatter - {sample_display}"
-                )
-                if fig:
-                    fig.set_size_inches(6, 6)
-                    st.pyplot(fig, use_container_width=True)
-                    plt.close(fig)
-                else:
-                    st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
-        else:
-            st.info("💡 Install squidpy to enable advanced spatial analysis features: `pip install squidpy`")
 
 # Neighborhood Enrichment Analysis
 st.subheader("🔬 Neighborhood Enrichment Analysis")
@@ -216,17 +268,40 @@ if SQUIDPY_AVAILABLE:
 
     # Set the cluster key
     selected_cluster_key = 'celltype'
-    
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ne_width = st.slider(
+            "Plot width (inches)",
+            min_value=1.0,
+            max_value=12.0,
+            value=8.0,
+            step=0.5,
+            key="ne_plot_width"
+        )
+        ne_height = st.slider(
+            "Plot height (inches)",
+            min_value=1.0,
+            max_value=12.0,
+            value=8.0,
+            step=0.5,
+            key="ne_plot_height"
+        )
+
     # Generate analysis automatically when data is loaded
     with st.spinner("Computing neighborhood enrichment..."):
         fig = spatial_viz_manager.plot_neighborhood_enrichment(
             adata,
-            cluster_key=selected_cluster_key
+            cluster_key=selected_cluster_key,
+            figsize=(float(ne_width), float(ne_height))
         )
         if fig:
-            st.pyplot(fig)
+            buffer = BytesIO()
+            fig.savefig(buffer, format="png", dpi=fig.dpi, bbox_inches="tight")
+            buffer.seek(0)
+            st.image(buffer, caption="Neighborhood enrichment", clamp=True)
             plt.close(fig)
-            st.success(f"✅ Neighborhood enrichment computed")
+            st.success("✅ Neighborhood enrichment computed")
         else:
             st.warning("Could not compute neighborhood enrichment. This may require specific data structure.")
 else:
@@ -299,6 +374,26 @@ if SQUIDPY_AVAILABLE:
     with col2:
         # Point size
         gene_point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="gene_point_size")
+
+    gene_col_w, gene_col_h = st.columns(2)
+    with gene_col_w:
+        gene_plot_width = st.slider(
+            "Plot width (inches)",
+            min_value=3.0,
+            max_value=12.0,
+            value=6.0,
+            step=0.5,
+            key="gene_plot_width"
+        )
+    with gene_col_h:
+        gene_plot_height = st.slider(
+            "Plot height (inches)",
+            min_value=3.0,
+            max_value=12.0,
+            value=6.0,
+            step=0.5,
+            key="gene_plot_height"
+        )
     
     # Generate plot automatically when genes are selected
     if selected_genes:
@@ -307,10 +402,14 @@ if SQUIDPY_AVAILABLE:
                 adata,
                 genes=selected_genes,
                 size=gene_point_size,
-                title=f"Gene Expression in Space - {sample_display}"
+                title=f"Gene Expression in Space - {sample_display}",
+                figsize=(gene_plot_width, gene_plot_height)
             )
             if fig:
-                st.pyplot(fig)
+                buffer = BytesIO()
+                fig.savefig(buffer, format="png", dpi=fig.dpi, bbox_inches="tight")
+                buffer.seek(0)
+                st.image(buffer, caption="Gene expression spatial plot", clamp=True)
                 plt.close(fig)
             else:
                 st.warning("Could not generate gene expression plot. Check if spatial coordinates are available.")
@@ -350,7 +449,6 @@ with col1:
     - **Spatial Scatter Plots**: Visualize cell distributions
     - **Neighborhood Enrichment**: Analyze spatial relationships
     - **Gene Expression Mapping**: Spatial gene visualization
-    - **Multiple Plot Comparison**: Side-by-side analysis
     - **Spatial Statistics**: Comprehensive spatial metrics
     
     ### Export Options
