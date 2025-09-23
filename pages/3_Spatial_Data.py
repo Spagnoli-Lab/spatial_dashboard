@@ -155,71 +155,66 @@ with col4:
 st.subheader("DAPI image and Spatial Scatter")
 
 if SQUIDPY_AVAILABLE:
-    st.markdown("##### Plot Settings")
 
-    set_col1, set_col2 = st.columns(2)
+    img_col, plot_col = st.columns(2, gap="medium")
 
-    with set_col1:
-        # Color options for squidpy
-        squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
-        squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
+    with img_col:
+        st.markdown("#### Masked DAPI image")
 
-    with set_col2:
-        # Point size
-        point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
+        # Load the matching DAPI image for the selected sample
+        image_path = data_manager.get_dapi_image_path(selected_sample)
 
-img_col, plot_col = st.columns(2, gap="medium")
+        if image_path and image_path.exists():
+            try:
+                arr = tiff.imread(str(image_path))
 
-with img_col:
-    st.markdown("#### Masked DAPI image")
+                # If 16-bit grayscale, normalize to 0–255 for display
+                if arr.dtype == np.uint16 and arr.max() > 0:
+                    arr = (arr.astype(np.float32) / arr.max() * 255).astype(np.uint8)
 
-    # Load the matching DAPI image for the selected sample
-    image_path = data_manager.get_dapi_image_path(selected_sample)
+                st.image(arr, caption=image_path.name, use_container_width=True, clamp=True)
+            except Exception as e:
+                st.write("tifffile could not read this TIFF:", e)
+        else:
+            st.info("No masked DAPI image found for this sample.")
 
-    if image_path and image_path.exists():
-        try:
-            arr = tiff.imread(str(image_path))
+    with plot_col:
+        if SQUIDPY_AVAILABLE:
+            st.markdown("#### 🔬 Squidpy Spatial Scatter Plot")
 
-            # If 16-bit grayscale, normalize to 0–255 for display
-            if arr.dtype == np.uint16 and arr.max() > 0:
-                arr = (arr.astype(np.float32) / arr.max() * 255).astype(np.uint8)
+            st.markdown("##### Plot Settings")
+            
+            # Color options for squidpy
+            squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
+            squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
 
-            st.image(arr, caption=image_path.name, use_container_width=True, clamp=True)
-        except Exception as e:
-            st.write("tifffile could not read this TIFF:", e)
-    else:
-        st.info("No masked DAPI image found for this sample.")
+            # Point size
+            point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
 
-with plot_col:
-    if SQUIDPY_AVAILABLE:
-        st.markdown("#### 🔬 Squidpy Spatial Scatter Plot")
-
-        # Generate plot automatically when data is loaded
-        with st.spinner("Generating Squidpy spatial scatter plot..."):
-            fig = spatial_viz_manager.plot_spatial_scatter(
-                adata,
-                color=squidpy_color,
-                size=point_size,
-                title=f"Squidpy Spatial Scatter - {sample_display}"
-            )
-            if fig:
-                fig.set_size_inches(6, 6)
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
-            else:
-                st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
-    else:
-        st.info("💡 Install squidpy to enable advanced spatial analysis features: `pip install squidpy`")
+            # Generate plot automatically when data is loaded
+            with st.spinner("Generating Squidpy spatial scatter plot..."):
+                fig = spatial_viz_manager.plot_spatial_scatter(
+                    adata,
+                    color=squidpy_color,
+                    size=point_size,
+                    title=f"Squidpy Spatial Scatter - {sample_display}"
+                )
+                if fig:
+                    fig.set_size_inches(6, 6)
+                    st.pyplot(fig, use_container_width=True)
+                    plt.close(fig)
+                else:
+                    st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
+        else:
+            st.info("💡 Install squidpy to enable advanced spatial analysis features: `pip install squidpy`")
 
 # Neighborhood Enrichment Analysis
 st.subheader("🔬 Neighborhood Enrichment Analysis")
 
 # Squidpy Neighborhood Enrichment Analysis
 if SQUIDPY_AVAILABLE:
-    
-    # Analysis settings above the figure
-    st.markdown("### Analysis Settings")
-    st.markdown("Cluster key fixed to **celltype** for neighborhood enrichment.")
+
+    # Set the cluster key
     selected_cluster_key = 'celltype'
     
     # Generate analysis automatically when data is loaded
