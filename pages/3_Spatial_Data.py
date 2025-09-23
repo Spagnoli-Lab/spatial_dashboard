@@ -154,7 +154,21 @@ with col4:
 # DAPI image and Spatial Scatter side-by-side
 st.subheader("DAPI image and Spatial Scatter")
 
-img_col, plot_col = st.columns(2)
+if SQUIDPY_AVAILABLE:
+    st.markdown("##### Plot Settings")
+
+    set_col1, set_col2 = st.columns(2)
+
+    with set_col1:
+        # Color options for squidpy
+        squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
+        squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
+
+    with set_col2:
+        # Point size
+        point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
+
+img_col, plot_col = st.columns(2, gap="medium")
 
 with img_col:
     st.markdown("#### Masked DAPI image")
@@ -180,20 +194,6 @@ with plot_col:
     if SQUIDPY_AVAILABLE:
         st.markdown("#### 🔬 Squidpy Spatial Scatter Plot")
 
-        # Plot settings above the figure
-        st.markdown("##### Plot Settings")
-
-        set_col1, set_col2 = st.columns(2)
-
-        with set_col1:
-            # Color options for squidpy
-            squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
-            squidpy_color = st.selectbox("Color by:", squidpy_color_options, key="squidpy_color")
-
-        with set_col2:
-            # Point size
-            point_size = st.slider("Point size:", min_value=1, max_value=50, value=20, key="squidpy_size")
-
         # Generate plot automatically when data is loaded
         with st.spinner("Generating Squidpy spatial scatter plot..."):
             fig = spatial_viz_manager.plot_spatial_scatter(
@@ -203,7 +203,8 @@ with plot_col:
                 title=f"Squidpy Spatial Scatter - {sample_display}"
             )
             if fig:
-                st.pyplot(fig)
+                fig.set_size_inches(6, 6)
+                st.pyplot(fig, use_container_width=True)
                 plt.close(fig)
             else:
                 st.warning("Could not generate spatial scatter plot. Check if spatial coordinates are available.")
@@ -218,10 +219,8 @@ if SQUIDPY_AVAILABLE:
     
     # Analysis settings above the figure
     st.markdown("### Analysis Settings")
-    
-    # Cluster key options
-    cluster_key_options = ['celltype'] + [col for col in adata.obs.columns if col != 'celltype']
-    selected_cluster_key = st.selectbox("Cluster key:", cluster_key_options, key="squidpy_cluster_key")
+    st.markdown("Cluster key fixed to **celltype** for neighborhood enrichment.")
+    selected_cluster_key = 'celltype'
     
     # Generate analysis automatically when data is loaded
     with st.spinner("Computing neighborhood enrichment..."):
