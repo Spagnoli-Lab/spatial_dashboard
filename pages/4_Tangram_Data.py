@@ -36,10 +36,10 @@ data_manager = get_data_manager()
 st.sidebar.title("🔬 Tangram Data Analysis")
 st.sidebar.header("Tangram Dataset Selection")
 
-tangram_catalog = data_manager.get_tangram_catalog()
+registered_catalog = data_manager.get_registered_catalog()
 
 stage_groups = {}
-for entry in tangram_catalog.values():
+for entry in registered_catalog.values():
     dataset_key = entry.get("key")
     if not dataset_key:
         continue
@@ -83,11 +83,11 @@ failed_entries = []
 for entry in selected_entries:
     dataset_key = entry["key"]
     display_label = _entry_sample_label(entry)
-    needs_reload = reload_stage or dataset_key not in data_manager.tangram_data
+    needs_reload = reload_stage or dataset_key not in data_manager.registered_data
     if needs_reload:
         with st.spinner(f"Loading Tangram data for {display_label}..."):
-            data_manager.load_tangram_data(dataset_key)
-    adata_obj = data_manager.tangram_data.get(dataset_key)
+            data_manager.load_registered_data(dataset_key)
+    adata_obj = data_manager.registered_data.get(dataset_key)
     if adata_obj is None:
         failed_entries.append(display_label)
         continue
@@ -196,9 +196,9 @@ def _resolve_measured_dataset(entry):
         candidate_key = (candidate or "").strip()
         if not candidate_key:
             continue
-        if candidate_key in data_manager.spatial_data:
-            return data_manager.spatial_data[candidate_key]
-        loaded_spatial = data_manager.load_spatial_data(candidate_key)
+        if candidate_key in data_manager.finalized_data:
+            return data_manager.finalized_data[candidate_key]
+        loaded_spatial = data_manager.load_registered_data(candidate_key, finalize=True)
         if loaded_spatial is not None:
             return loaded_spatial
     return None

@@ -29,14 +29,12 @@ class DataManager:
         else:
             self.data_dir = self.spatial_data_dir  # Default to spatial data directory
         
-        self.scrna_data = {}  # Dictionary to store data by sample
-        self.spatial_data = {}  # Dictionary to store data by sample
-        self.tangram_data = {}  # Dictionary to store data by sample
-        self._spatial_catalog: Optional[Dict[str, Dict]] = None
-        self._spatial_alias_map: Dict[str, str] = {}
+        self.scrna_data = {}  # Dictionary to store scRNA-seq data by sample
+        self.registered_data: Dict[str, anndata.AnnData] = {}
+        self.finalized_data: Dict[str, anndata.AnnData] = {}
+        self._registered_catalog: Optional[Dict[str, Dict]] = None
+        self._registered_alias_map: Dict[str, str] = {}
         self._dapi_cache: Dict[str, Optional[Path]] = {}
-        self._tangram_catalog: Optional[Dict[str, Dict]] = None
-        self._tangram_alias_map: Dict[str, str] = {}
 
     # --- Shared Helpers ---
 
@@ -110,6 +108,28 @@ class DataManager:
         adata.obs['total_counts'] = np.sum(adata.X, axis=1)
         adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
         return adata
+
+    def _register_catalog_aliases(self, canonical_key: str, entry: Dict, extra_alias: Optional[str] = None):
+        """Record aliases for a dataset across spatial and Tangram contexts."""
+        if not canonical_key or entry is None:
+            return
+
+        alias_values = set(entry.get('aliases', []))
+        alias_values.update({
+            canonical_key,
+            entry.get('primary_sample'),
+            entry.get('file_stem'),
+            entry.get('file_name'),
+            extra_alias,
+        })
+        alias_values.discard(None)
+
+        sorted_aliases = sorted(alias_values)
+        entry['aliases'] = sorted_aliases
+
+        for alias in sorted_aliases:
+            lower_alias = alias.lower()
+            self._registered_alias_map[lower_alias] = canonical_key
 
     # --- scRNA-seq (Page 2) ---
 
@@ -208,27 +228,26 @@ class DataManager:
             print(f"Error reading Cartana.h5ad for sample options: {e}")
             return ['E12', 'E14', 'E17']
 
-    # --- Spatial Data (Page 3) ---
+    # --- Registered Data (Spatial & Tangram Pages) ---
 
-    def _build_spatial_catalog(self) -> Dict[str, Dict]:
-        """Build a catalog of available spatial datasets."""
+    def _build_registered_catalog(self) -> Dict[str, Dict]:
+        """Discover available registered datasets."""
         catalog: Dict[str, Dict] = {}
 
-        candidate_paths: List[Path] = []
-        candidate_paths.extend(sorted(self.spatial_data_dir.glob("*.h5ad")))
-
-        spatial_dir = self.spatial_data_dir / "spatial"
-        if spatial_dir.exists():
-            candidate_paths.extend(sorted(spatial_dir.rglob("*.h5ad")))
+        candidate_paths = sorted(self.tangram_data_dir.rglob("*.h5ad"))
 
         for file_path in candidate_paths:
             if not file_path.is_file():
                 continue
 
-            if any(part.lower() == 'scrna-seq' for part in file_path.parts):
+            if any(part.lower() == "scrna-seq" for part in file_path.parts):
                 continue
 
-            primary_sample, display_name, aliases, data_type = self._infer_spatial_metadata(file_path)
+            if "tangram" not in file_path.name.lower():
+                continue
+
+            primary_sample, display_name, aliases, _ = self._infer_spatial_metadata(file_path)
+            data_type = "registered"
 
             key = primary_sample or file_path.stem
             base_key = key
@@ -241,47 +260,54 @@ class DataManager:
             alias_values.update(filter(None, [primary_sample, file_path.stem, file_path.name, key]))
 
             entry = {
-                'key': key,
-                'primary_sample': primary_sample,
-                'display_name': display_name,
-                'aliases': sorted(alias_values),
-                'data_type': data_type,
-                'path': file_path,
-                'file_name': file_path.name,
-                'file_stem': file_path.stem,
+                "key": key,
+                "primary_sample": primary_sample,
+                "display_name": display_name,
+                "aliases": sorted(alias_values),
+                "data_type": data_type,
+                "path": file_path,
+                "file_name": file_path.name,
+                "file_stem": file_path.stem,
             }
             catalog[key] = entry
 
         return catalog
 
-    def refresh_spatial_catalog(self):
-        """Force rebuilding of the spatial catalog on next access."""
-        self._spatial_catalog = None
+    def refresh_registered_catalog(self):
+        """Clear the cached registered catalog."""
+        self._registered_catalog = None
+        self._registered_alias_map.clear()
+        self._dapi_cache.clear()
 
-    def get_spatial_catalog(self) -> Dict[str, Dict]:
-        """Return the cached spatial catalog, rebuilding if needed."""
-        if self._spatial_catalog is None:
-            self._spatial_catalog = self._build_spatial_catalog()
-        return self._spatial_catalog
+    def get_registered_catalog(self) -> Dict[str, Dict]:
+        """Return the cached registered catalog, rebuilding if needed."""
+        if self._registered_catalog is None:
+            self._registered_catalog = self._build_registered_catalog()
+        return self._registered_catalog
 
-    def _resolve_spatial_entry(self, sample: str) -> Optional[Dict]:
-        """Resolve a sample identifier to a catalog entry."""
+    def _resolve_registered_entry(self, sample: str) -> Optional[Dict]:
+        """Resolve a sample identifier to a registered catalog entry."""
         if not sample:
             return None
 
-        catalog = self.get_spatial_catalog()
+        catalog = self.get_registered_catalog()
 
         if sample in catalog:
             return catalog[sample]
 
         sample_lower = sample.lower()
+
+        alias_key = self._registered_alias_map.get(sample_lower)
+        if alias_key and alias_key in catalog:
+            return catalog[alias_key]
+
         for entry in catalog.values():
             candidate_aliases = [
-                entry.get('key'),
-                entry.get('primary_sample'),
-                entry.get('file_stem'),
-                entry.get('file_name'),
-            ] + entry.get('aliases', [])
+                entry.get("key"),
+                entry.get("primary_sample"),
+                entry.get("file_stem"),
+                entry.get("file_name"),
+            ] + entry.get("aliases", [])
 
             for alias in candidate_aliases:
                 if alias and alias.lower() == sample_lower:
@@ -289,106 +315,99 @@ class DataManager:
 
         return None
 
-    def _register_spatial_aliases(self, canonical_key: str, entry: Dict, extra_alias: Optional[str] = None):
-        """Update alias bookkeeping for loaded spatial datasets."""
-        if not canonical_key:
-            return
-
-        alias_values = set(entry.get('aliases', []))
-        alias_values.update({
-            canonical_key,
-            entry.get('primary_sample'),
-            entry.get('file_stem'),
-            entry.get('file_name'),
-            extra_alias,
-        })
-        alias_values.discard(None)
-
-        entry['aliases'] = sorted(alias_values)
-
-        for alias in alias_values:
-            self._spatial_alias_map[alias.lower()] = canonical_key
-
-    def _resolve_spatial_key(self, sample: str) -> Optional[str]:
-        """Resolve a sample identifier to a loaded spatial dataset key."""
+    def _resolve_registered_key(self, sample: str, *, finalized: bool = False) -> Optional[str]:
+        """Resolve a sample identifier to an in-memory dataset key."""
         if not sample:
             return None
 
-        if sample in self.spatial_data:
+        data_map = self.finalized_data if finalized else self.registered_data
+        if sample in data_map:
             return sample
 
-        return self._spatial_alias_map.get(sample.lower())
+        alias = self._registered_alias_map.get(sample.lower())
+        if alias and alias in data_map:
+            return alias
 
-    def get_spatial_dataset(self, sample: str) -> Optional[anndata.AnnData]:
-        """Retrieve a loaded spatial dataset by sample or alias."""
-        spatial_key = self._resolve_spatial_key(sample)
-        if spatial_key:
-            return self.spatial_data.get(spatial_key)
-        return None
+        return alias
 
-    def load_spatial_data(self, sample: str) -> anndata.AnnData:
-        """Load spatial data for specific sample"""
+    def get_registered_dataset(self, sample: str, *, finalized: bool = False) -> Optional[anndata.AnnData]:
+        """Retrieve a loaded registered dataset by sample or alias."""
+        key = self._resolve_registered_key(sample, finalized=finalized)
+        if not key:
+            return None
+        data_map = self.finalized_data if finalized else self.registered_data
+        return data_map.get(key)
+
+    def load_registered_data(self, sample: str, *, finalize: bool = False) -> Optional[anndata.AnnData]:
+        """Load a registered dataset from disk, optionally finalising spatial coordinates."""
         try:
-            catalog_entry = self._resolve_spatial_entry(sample)
-            if catalog_entry is None:
-                # Catalog may be stale if new files were added; refresh once
-                self.refresh_spatial_catalog()
-                catalog_entry = self._resolve_spatial_entry(sample)
+            existing = self.get_registered_dataset(sample, finalized=finalize)
+            if existing is not None:
+                return existing
+
+            entry = self._resolve_registered_entry(sample)
+            if entry is None:
+                self.refresh_registered_catalog()
+                entry = self._resolve_registered_entry(sample)
 
             file_path: Optional[Path] = None
-            if catalog_entry:
-                file_path = Path(catalog_entry['path'])
+            if entry:
+                file_path = Path(entry["path"])
             else:
-                # Fallback to original glob patterns for backward compatibility
-                if sample == "E14":
-                    tangram_file = self.spatial_data_dir / "E14.5_2_Tangram.h5ad"
-                    if tangram_file.exists():
-                        file_path = tangram_file
+                sample_files = list(self.tangram_data_dir.glob(f"*{sample}*tangram*.h5ad"))
+                if not sample_files:
+                    sample_files = list(self.tangram_data_dir.glob(f"*{sample}*Tangram*.h5ad"))
+                if sample_files:
+                    file_path = Path(sample_files[0])
+                    entry = {
+                        "key": sample,
+                        "primary_sample": sample,
+                        "display_name": sample,
+                        "aliases": [sample],
+                        "data_type": "registered",
+                        "path": file_path,
+                        "file_name": file_path.name,
+                        "file_stem": file_path.stem,
+                    }
 
-                if file_path is None:
-                    sample_files = list(self.spatial_data_dir.glob(f"*{sample}*spatial*.h5ad"))
-                    if not sample_files:
-                        sample_files = list(self.spatial_data_dir.glob(f"*{sample}*predicted*.h5ad"))
-                    if sample_files:
-                        file_path = sample_files[0]
-
-                if file_path is None:
-                    st.error(f"No spatial data found for sample {sample}")
-                    return None
-
-                file_path = Path(file_path)
-                catalog_entry = {
-                    'key': sample,
-                    'primary_sample': sample,
-                    'display_name': sample,
-                    'aliases': [sample],
-                    'data_type': 'unknown',
-                    'path': file_path,
-                    'file_name': file_path.name,
-                    'file_stem': file_path.stem,
-                }
-
-            if not file_path.exists():
-                st.error(f"Spatial data file not found: {file_path}")
+            if file_path is None or not file_path.exists():
+                st.error(f"No registered data found for sample {sample}")
                 return None
 
             adata = anndata.read_h5ad(str(file_path))
-            adata = self._finalize_spatial_dataset(adata)
 
-            store_key = catalog_entry.get('key', sample)
-            self.spatial_data[store_key] = adata
+            adata.obs["total_counts"] = np.asarray(np.sum(adata.X, axis=1)).ravel()
+            adata.obs["n_genes_by_counts"] = np.asarray(np.sum(adata.X > 0, axis=1)).ravel()
 
-            # Remember aliases for subsequent lookups and updates
-            self._register_spatial_aliases(store_key, catalog_entry, extra_alias=sample)
+            store_key = entry.get("key", sample) if entry else sample
+            self.registered_data[store_key] = adata
 
-            # Update cached catalog with fallback entries so selectors stay in sync
-            if self._spatial_catalog is not None and store_key not in self._spatial_catalog:
-                self._spatial_catalog[store_key] = catalog_entry
+            if entry:
+                self._register_catalog_aliases(store_key, entry, extra_alias=sample)
+                if self._registered_catalog is not None and store_key not in self._registered_catalog:
+                    self._registered_catalog[store_key] = entry
+
+            if finalize:
+                finalized = self._finalize_spatial_dataset(adata.copy())
+                self.finalized_data[store_key] = finalized
+                return finalized
 
             return adata
-        except Exception as e:
-            st.error(f"Error loading spatial data for {sample}: {e}")
+        except Exception as exc:
+            st.error(f"Error loading registered data for {sample}: {exc}")
             return None
+
+    def get_available_registered_samples(self) -> List[str]:
+        """List available dataset keys for UI selectors."""
+        catalog = self.get_registered_catalog()
+        if catalog:
+            sorted_entries = sorted(
+                catalog.values(),
+                key=lambda entry: entry.get("display_name", entry.get("key", "")).lower()
+            )
+            return [entry["key"] for entry in sorted_entries]
+
+        return ['E14']
 
     def _get_spatial_sample_tokens(self, entry: Dict, sample: str) -> List[str]:
         """Collect token variants that help match auxiliary files for a sample."""
@@ -457,10 +476,10 @@ class DataManager:
         if sample_key in self._dapi_cache:
             return self._dapi_cache[sample_key]
 
-        entry = self._resolve_spatial_entry(sample)
+        entry = self._resolve_registered_entry(sample)
         if entry is None:
-            self.refresh_spatial_catalog()
-            entry = self._resolve_spatial_entry(sample)
+            self.refresh_registered_catalog()
+            entry = self._resolve_registered_entry(sample)
 
         if entry is None:
             return None
@@ -508,212 +527,17 @@ class DataManager:
         entry['dapi_path'] = best_file
         return best_file
 
-    def get_available_samples(self) -> List[str]:
-        """Get list of available samples (E12, E14, E17) for spatial data"""
-        catalog = self.get_spatial_catalog()
-        if catalog:
-            sorted_entries = sorted(
-                catalog.values(),
-                key=lambda entry: entry.get('display_name', entry.get('key', '')).lower()
-            )
-            return [entry['key'] for entry in sorted_entries]
-
-        # Fallback to original glob-based detection if the catalog is empty
-        samples = []
-        for file_path in self.spatial_data_dir.glob("*.h5ad"):
-            file_name = file_path.name.lower()
-            if 'e14.5' in file_name and 'e14' not in samples:
-                samples.append('E14')
-            elif 'e12' in file_name and 'e12' not in samples:
-                samples.append('E12')
-            elif 'e14' in file_name and 'e14' not in samples:
-                samples.append('E14')
-            elif 'e17' in file_name and 'e17' not in samples:
-                samples.append('E17')
-
-        if not samples:
-            samples = ['E14']
-
-        return sorted(samples)
-
-    # --- Tangram Data (Page 4) ---
-
-    def _build_tangram_catalog(self) -> Dict[str, Dict]:
-        """Build a catalog of available Tangram datasets."""
-        catalog: Dict[str, Dict] = {}
-
-        candidate_paths = sorted(self.tangram_data_dir.rglob("*.h5ad"))
-
-        for file_path in candidate_paths:
-            if not file_path.is_file():
-                continue
-
-            if any(part.lower() == "scrna-seq" for part in file_path.parts):
-                continue
-
-            if "tangram" not in file_path.name.lower():
-                continue
-
-            primary_sample, display_name, aliases, _ = self._infer_spatial_metadata(file_path)
-            data_type = "tangram"
-
-            key = primary_sample or file_path.stem
-            base_key = key
-            counter = 2
-            while key in catalog:
-                key = f"{base_key}_{counter}"
-                counter += 1
-
-            alias_values = set(aliases)
-            alias_values.update(filter(None, [primary_sample, file_path.stem, file_path.name, key]))
-
-            entry = {
-                "key": key,
-                "primary_sample": primary_sample,
-                "display_name": display_name,
-                "aliases": sorted(alias_values),
-                "data_type": data_type,
-                "path": file_path,
-                "file_name": file_path.name,
-                "file_stem": file_path.stem,
-            }
-            catalog[key] = entry
-
-        return catalog
-
-    def refresh_tangram_catalog(self):
-        """Force rebuilding of the Tangram catalog on next access."""
-        self._tangram_catalog = None
-        self._tangram_alias_map.clear()
-
-    def get_tangram_catalog(self) -> Dict[str, Dict]:
-        """Return the cached Tangram catalog, rebuilding if needed."""
-        if self._tangram_catalog is None:
-            self._tangram_catalog = self._build_tangram_catalog()
-        return self._tangram_catalog
-
-    def _register_tangram_aliases(self, canonical_key: str, entry: Dict, extra_alias: Optional[str] = None):
-        """Update alias bookkeeping for loaded Tangram datasets."""
-        if not canonical_key:
-            return
-
-        alias_values = set(entry.get("aliases", []))
-        alias_values.update({
-            canonical_key,
-            entry.get("primary_sample"),
-            entry.get("file_stem"),
-            entry.get("file_name"),
-            extra_alias,
-        })
-
-        for alias in alias_values:
-            if not alias:
-                continue
-            self._tangram_alias_map[alias.lower()] = canonical_key
-
-    def _resolve_tangram_entry(self, sample: str) -> Optional[Dict]:
-        """Resolve a Tangram sample identifier to a catalog entry."""
-        if not sample:
-            return None
-
-        catalog = self.get_tangram_catalog()
-
-        if sample in catalog:
-            return catalog[sample]
-
-        sample_lower = sample.lower()
-
-        alias_key = self._tangram_alias_map.get(sample_lower)
-        if alias_key and alias_key in catalog:
-            return catalog[alias_key]
-
-        for entry in catalog.values():
-            candidate_aliases = [
-                entry.get("key"),
-                entry.get("primary_sample"),
-                entry.get("file_stem"),
-                entry.get("file_name"),
-            ] + entry.get("aliases", [])
-
-            for alias in candidate_aliases:
-                if alias and alias.lower() == sample_lower:
-                    return entry
-
-        return None
-
-    def load_tangram_data(self, sample: str) -> anndata.AnnData:
-        """Load Tangram data for specific sample."""
-        try:
-            catalog_entry = self._resolve_tangram_entry(sample)
-            if catalog_entry is None:
-                self.refresh_tangram_catalog()
-                catalog_entry = self._resolve_tangram_entry(sample)
-
-            file_path: Optional[Path] = None
-            if catalog_entry:
-                file_path = Path(catalog_entry["path"])
-            else:
-                sample_files = list(self.tangram_data_dir.glob(f"*{sample}*tangram*.h5ad"))
-                if not sample_files:
-                    sample_files = list(self.tangram_data_dir.glob(f"*{sample}*Tangram*.h5ad"))
-                if sample_files:
-                    file_path = Path(sample_files[0])
-                    catalog_entry = {
-                        "key": sample,
-                        "primary_sample": sample,
-                        "display_name": sample,
-                        "aliases": [sample],
-                        "data_type": "tangram",
-                        "path": file_path,
-                        "file_name": file_path.name,
-                        "file_stem": file_path.stem,
-                    }
-
-            if file_path is None or not file_path.exists():
-                st.error(f"No Tangram data found for sample {sample}")
-                return None
-
-            adata = anndata.read_h5ad(str(file_path))
-
-            adata.obs["total_counts"] = np.asarray(np.sum(adata.X, axis=1)).ravel()
-            adata.obs["n_genes_by_counts"] = np.asarray(np.sum(adata.X > 0, axis=1)).ravel()
-
-            store_key = catalog_entry.get("key", sample) if catalog_entry else sample
-            self.tangram_data[store_key] = adata
-
-            if catalog_entry:
-                self._register_tangram_aliases(store_key, catalog_entry, extra_alias=sample)
-                if self._tangram_catalog is not None and store_key not in self._tangram_catalog:
-                    self._tangram_catalog[store_key] = catalog_entry
-
-            return adata
-        except Exception as e:
-            st.error(f"Error loading Tangram data for {sample}: {e}")
-            return None
-
-    def get_available_tangram_samples(self) -> List[str]:
-        """Get list of available samples for Tangram datasets."""
-        catalog = self.get_tangram_catalog()
-        if catalog:
-            sorted_entries = sorted(
-                catalog.values(),
-                key=lambda entry: entry.get("display_name", entry.get("key", "")).lower()
-            )
-            return [entry["key"] for entry in sorted_entries]
-
-        return []
-
     # --- Dashboard Summary & Maintenance ---
 
     def get_data_summary(self) -> Dict:
         """Get summary of all loaded data"""
         summary = {
             'scrna_samples': list(self.scrna_data.keys()),
-            'spatial_samples': list(self.spatial_data.keys()),
-            'tangram_samples': list(self.tangram_data.keys()),
-            'total_samples': len(set(list(self.scrna_data.keys()) + 
-                                   list(self.spatial_data.keys()) + 
-                                   list(self.tangram_data.keys())))
+            'finalized_samples': list(self.finalized_data.keys()),
+            'registered_samples': list(self.registered_data.keys()),
+            'total_samples': len(set(list(self.scrna_data.keys()) +
+                                   list(self.finalized_data.keys()) +
+                                   list(self.registered_data.keys())))
         }
         return summary
 
@@ -727,18 +551,29 @@ class DataManager:
         
         if data_type == 'spatial' or data_type is None:
             if sample:
-                spatial_key = self._resolve_spatial_key(sample)
+                spatial_key = self._resolve_registered_key(sample, finalized=True)
                 if spatial_key:
-                    self.spatial_data.pop(spatial_key, None)
-                    aliases_to_remove = [alias for alias, key in self._spatial_alias_map.items() if key == spatial_key]
-                    for alias in aliases_to_remove:
-                        self._spatial_alias_map.pop(alias, None)
+                    self.finalized_data.pop(spatial_key, None)
+                    aliases_to_purge = [alias for alias, key in list(self._registered_alias_map.items()) if key == spatial_key]
+                    for alias in aliases_to_purge:
+                        self._dapi_cache.pop(alias.lower(), None)
+                    self._dapi_cache.pop(spatial_key.lower(), None)
             else:
-                self.spatial_data.clear()
-                self._spatial_alias_map.clear()
+                self.finalized_data.clear()
+                self._dapi_cache.clear()
 
         if data_type == 'tangram' or data_type is None:
             if sample:
-                self.tangram_data.pop(sample, None)
+                canonical = self._registered_alias_map.get(sample.lower(), sample)
+                self.registered_data.pop(canonical, None)
+                self.finalized_data.pop(canonical, None)
+                aliases_to_remove = [alias for alias, key in list(self._registered_alias_map.items()) if key == canonical]
+                for alias in aliases_to_remove:
+                    self._registered_alias_map.pop(alias, None)
+                    self._dapi_cache.pop(alias, None)
+                self._dapi_cache.pop(canonical.lower(), None)
             else:
-                self.tangram_data.clear()
+                self.registered_data.clear()
+                self.finalized_data.clear()
+                self._registered_alias_map.clear()
+                self._dapi_cache.clear()
