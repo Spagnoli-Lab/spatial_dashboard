@@ -30,8 +30,7 @@ try:
     SQUIDPY_AVAILABLE = True
     # Show Squidpy version for debugging
     import squidpy
-    st.sidebar.info(f"Squidpy version: {squidpy.__version__}")
-    st.sidebar.success("✅ Spatial Visualization Manager available")
+    st.sidebar.success(f"Squidpy version: {squidpy.__version__}")
 except ImportError:
     SQUIDPY_AVAILABLE = False
     st.sidebar.warning("⚠️ Squidpy not available. Spatial analysis features will be limited.")
@@ -53,27 +52,45 @@ def get_managers():
 data_manager, viz_manager, spatial_viz_manager = get_managers()
 
 # Sidebar
-st.sidebar.title("🗺️ Spatial Data Analysis")
 
 # Sample selection
 st.sidebar.header("📁 Sample Selection")
-st.sidebar.info(f"Data directory: {data_manager.spatial_data_dir}")
 
 registered_catalog = data_manager.get_registered_catalog()
 available_samples = data_manager.get_available_registered_samples()
+
+def _clean_sample_label(label: str) -> str:
+    """Return a concise version of the sample label without metadata suffixes."""
+    if not label:
+        return ""
+    return label.split("(", 1)[0].strip()
+
+
+def _get_sample_label(sample_key: str) -> str:
+    entry = registered_catalog.get(sample_key, {})
+    candidates = [
+        entry.get("primary_sample"),
+        entry.get("key"),
+        entry.get("file_stem"),
+        sample_key,
+    ]
+    for candidate in candidates:
+        cleaned = _clean_sample_label(str(candidate)) if candidate else ""
+        if cleaned:
+            return cleaned
+    return sample_key
 
 if not available_samples:
     st.sidebar.error("No spatial datasets detected in the catalog")
     st.info("Please add spatial .h5ad files to the data directory and reload the app.")
     st.stop()
 
-sample_labels = [registered_catalog.get(key, {}).get("display_name", key) for key in available_samples]
-st.sidebar.caption("Available samples: " + ", ".join(sample_labels))
+sample_labels = [_get_sample_label(key) for key in available_samples]
 
 selected_sample = st.sidebar.selectbox(
     "Select Sample:",
     available_samples,
-    format_func=lambda key: registered_catalog.get(key, {}).get("display_name", key),
+    format_func=_get_sample_label,
     help="Choose the spatial dataset to analyze"
 )
 
@@ -82,23 +99,23 @@ if not selected_entry:
     st.sidebar.error("Selected sample is missing from the catalog. Please reload the app.")
     st.stop()
 
-sample_display = selected_entry.get("display_name", selected_sample)
+sample_display = _get_sample_label(selected_sample)
 
 # Data status and loading
 st.sidebar.header("📊 Data Status")
 
 # Show current data status
 loaded_spatial = data_manager.get_registered_dataset(selected_sample, finalized=True)
-if loaded_spatial is not None:
-    st.sidebar.success(f"✅ Spatial\n{loaded_spatial.n_obs} cells")
-else:
-    st.sidebar.info("⏳ Spatial\nNot loaded")
+#if loaded_spatial is not None:
+#    st.sidebar.success(f"✅ Spatial\n{loaded_spatial.n_obs} cells")
+#else:
+#    st.sidebar.info(" Spatial\nNot loaded")
 
 # Auto-load data if not loaded
 if loaded_spatial is None:
     with st.spinner(f"Loading spatial data for {sample_display}..."):
         try:
-            loaded_spatial = data_manager.load_registered_data(selected_sample, finalize=True)
+           loaded_spatial = data_manager.load_registered_data(selected_sample, finalize=True)
         except Exception as e:
             st.error(f"Error loading data: {e}")
             st.info("Please restart the app to use the updated DataManager")
@@ -109,13 +126,13 @@ if loaded_spatial is None:
     st.stop()
 
 # Manual reload button
-if st.sidebar.button("🔄 Reload Data"):
-    with st.spinner(f"Reloading spatial data for {sample_display}..."):
-        reloaded = data_manager.load_registered_data(selected_sample, finalize=True)
-        if reloaded is not None:
-            st.sidebar.success(f"Reloaded {reloaded.n_obs} cells")
-        else:
-            st.sidebar.error("Reload failed. Check the dataset and try again.")
+#if st.sidebar.button("🔄 Reload Data"):
+#    with st.spinner(f"Reloading spatial data for {sample_display}..."):
+#        reloaded = data_manager.load_registered_data(selected_sample, finalize=True)
+#        if reloaded is not None:
+#            st.sidebar.success(f"Reloaded {reloaded.n_obs} cells")
+#        else:
+#            st.sidebar.error("Reload failed. Check the dataset and try again.")
 
 # Available Spatial Visualizations
 if SQUIDPY_AVAILABLE:
@@ -124,7 +141,6 @@ if SQUIDPY_AVAILABLE:
     - **Spatial Scatter Plots**: Color by annotations
     - **Neighborhood Enrichment**: Spatial relationships
     - **Gene Expression**: Spatial gene mapping
-    - **Spatial Statistics**: Comprehensive analysis
     """)
 
 # Main content
@@ -269,37 +285,37 @@ if SQUIDPY_AVAILABLE:
     # Set the cluster key
     selected_cluster_key = 'celltype'
 
-    col1, col2 = st.columns(2)
-    with col1:
-        ne_width = st.slider(
-            "Plot width (inches)",
-            min_value=1.0,
-            max_value=12.0,
-            value=8.0,
-            step=0.5,
-            key="ne_plot_width"
-        )
-        ne_height = st.slider(
-            "Plot height (inches)",
-            min_value=1.0,
-            max_value=12.0,
-            value=8.0,
-            step=0.5,
-            key="ne_plot_height"
-        )
+    #col1, col2 = st.columns(2)
+    #with col1:
+    #    ne_width = st.slider(
+    #        "Plot width (inches)",
+    #        min_value=1.0,
+    #        max_value=12.0,
+    #        value=8.0,
+    #        step=0.5,
+    #        key="ne_plot_width"
+    #    )
+    #    ne_height = st.slider(
+    #        "Plot height (inches)",
+    #        min_value=1.0,
+    #        max_value=12.0,
+    #        value=8.0,
+    #        step=0.5,
+    #        key="ne_plot_height"
+    #    )
 
     # Generate analysis automatically when data is loaded
     with st.spinner("Computing neighborhood enrichment..."):
         fig = spatial_viz_manager.plot_neighborhood_enrichment(
             adata,
             cluster_key=selected_cluster_key,
-            figsize=(float(ne_width), float(ne_height))
+            figsize=(8,8)
         )
         if fig:
             buffer = BytesIO()
             fig.savefig(buffer, format="png", dpi=fig.dpi, bbox_inches="tight")
             buffer.seek(0)
-            st.image(buffer, caption="Neighborhood enrichment", clamp=True)
+            st.image(buffer, clamp=True)
             plt.close(fig)
             st.success("✅ Neighborhood enrichment computed")
         else:

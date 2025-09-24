@@ -32,21 +32,122 @@ def get_data_manager():
 
 data_manager = get_data_manager()
 
-# Sidebar
+# ---- Helper utilities -----------------------------------------------------
+
+def _group_catalog_by_stage(catalog):
+    """Return registered entries grouped by developmental stage label."""
+    stage_groups = {}
+    for entry in catalog.values():
+        dataset_key = entry.get("key")
+        if not dataset_key:
+            continue
+        primary_value = (entry.get("primary_sample") or dataset_key).upper()
+        stage_match = re.match(r"(E\d+)", primary_value)
+        stage_label = stage_match.group(1) if stage_match else primary_value
+        stage_groups.setdefault(stage_label, []).append(entry)
+    return stage_groups
+
+
+def _clean_sample_label(label: str) -> str:
+    if not label:
+        return ""
+    return label.split("(", 1)[0].strip()
+
+
+def _entry_sample_label(entry):
+    """Return a concise sample label for UI display."""
+    candidates = [
+        entry.get("primary_sample"),
+        entry.get("key"),
+        entry.get("file_stem"),
+        entry.get("file_name"),
+    ]
+    for candidate in candidates:
+        cleaned = _clean_sample_label(str(candidate)) if candidate else ""
+        if cleaned:
+            return cleaned
+    fallback = _clean_sample_label(str(entry.get("key", "")))
+    return fallback or str(entry.get("key", ""))
+
+
+def _load_stage_datasets(selected_entries, should_reload):
+    """Load Tangram data for the selected replicates."""
+    stage_datasets = []
+    failed_entries = []
+
+    for entry in selected_entries:
+        dataset_key = entry["key"]
+        display_label = _entry_sample_label(entry)
+        needs_reload = should_reload or dataset_key not in data_manager.registered_data
+        if needs_reload:
+            with st.spinner(f"Loading Tangram data for {display_label}..."):
+                data_manager.load_registered_data(dataset_key)
+        adata_obj = data_manager.registered_data.get(dataset_key)
+        if adata_obj is None:
+            failed_entries.append(display_label)
+            continue
+        stage_datasets.append((entry, adata_obj))
+
+    return stage_datasets, failed_entries
+
+
+def _label_stage_datasets(stage_datasets):
+    """Attach unique UI labels to each replicate entry."""
+    labeled_stage_datasets = []
+    used_labels = set()
+    for entry, adata_obj in stage_datasets:
+        label = _entry_sample_label(entry)
+        if label in used_labels:
+            label = f"{label} [{entry['key']}]"
+        used_labels.add(label)
+        labeled_stage_datasets.append((label, entry, adata_obj))
+    return labeled_stage_datasets
+
+
+def _sanitize_gene_name(name: str) -> str:
+    """Return a normalised gene identifier for lookups."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def _match_default_genes(defaults, candidates):
+    """Cross-reference preferred defaults against available genes."""
+    lookup = {_sanitize_gene_name(gene): gene for gene in candidates}
+    matched = []
+    for gene in defaults:
+        key = _sanitize_gene_name(gene)
+        value = lookup.get(key)
+        if value and value not in matched:
+            matched.append(value)
+    return matched
+
+
+def _resolve_measured_dataset(entry):
+    """Best-effort lookup of the measured dataset associated with a replicate."""
+    candidate_ids = [
+        entry.get("primary_sample"),
+        entry.get("key"),
+        entry.get("file_stem"),
+        entry.get("file_name"),
+    ]
+    for candidate in candidate_ids:
+        candidate_key = (candidate or "").strip()
+        if not candidate_key:
+            continue
+        if candidate_key in data_manager.finalized_data:
+            return data_manager.finalized_data[candidate_key]
+        loaded_spatial = data_manager.load_registered_data(candidate_key, finalize=True)
+        if loaded_spatial is not None:
+            return loaded_spatial
+    return None
+
+
+# ---- Sidebar configuration -------------------------------------------------
+
 st.sidebar.title("🔬 Tangram Data Analysis")
 st.sidebar.header("Tangram Dataset Selection")
 
 registered_catalog = data_manager.get_registered_catalog()
-
-stage_groups = {}
-for entry in registered_catalog.values():
-    dataset_key = entry.get("key")
-    if not dataset_key:
-        continue
-    primary_value = (entry.get("primary_sample") or dataset_key).upper()
-    stage_match = re.match(r"(E\d+)", primary_value)
-    stage_label = stage_match.group(1) if stage_match else primary_value
-    stage_groups.setdefault(stage_label, []).append(entry)
+stage_groups = _group_catalog_by_stage(registered_catalog)
 
 if not stage_groups:
     st.sidebar.error("No Tangram datasets found in the data directory")
@@ -60,15 +161,6 @@ selected_stage = st.sidebar.selectbox(
     help="Tangram replicates load automatically for the selected developmental stage."
 )
 
-def _entry_sample_label(entry):
-    """Return a concise sample label for UI display."""
-    return (
-        entry.get("primary_sample")
-        or entry.get("key")
-        or entry.get("file_stem")
-        or entry.get("file_name")
-    )
-
 selected_entries = sorted(
     stage_groups[selected_stage],
     key=lambda entry: _entry_sample_label(entry).lower()
@@ -76,53 +168,22 @@ selected_entries = sorted(
 
 reload_stage = st.sidebar.button("🔄 Reload Stage Data")
 
-stage_datasets = []
-failed_entries = []
-
-
-for entry in selected_entries:
-    dataset_key = entry["key"]
-    display_label = _entry_sample_label(entry)
-    needs_reload = reload_stage or dataset_key not in data_manager.registered_data
-    if needs_reload:
-        with st.spinner(f"Loading Tangram data for {display_label}..."):
-            data_manager.load_registered_data(dataset_key)
-    adata_obj = data_manager.registered_data.get(dataset_key)
-    if adata_obj is None:
-        failed_entries.append(display_label)
-        continue
-    stage_datasets.append((entry, adata_obj))
+stage_datasets, failed_entries = _load_stage_datasets(selected_entries, reload_stage)
 
 if not stage_datasets:
     st.error(f"Failed to load Tangram data for {selected_stage}")
     st.info("Please check that Tangram data files exist for this stage.")
     st.stop()
 
+labeled_stage_datasets = _label_stage_datasets(stage_datasets)
 
-def _format_entry_label(entry):
-    return _entry_sample_label(entry)
+# ---- Stage-level summaries -------------------------------------------------
 
-
-labeled_stage_datasets = []
-used_labels = set()
-for entry, adata_obj in stage_datasets:
-    label = _format_entry_label(entry)
-    if label in used_labels:
-        label = f"{label} [{entry['key']}]"
-    used_labels.add(label)
-    labeled_stage_datasets.append((label, entry, adata_obj))
-
-st.sidebar.header("📊 Data Status")
-for label, entry, adata_obj in labeled_stage_datasets:
-    st.sidebar.success(f"{label}\n{adata_obj.n_obs} cells")
-for display_name in failed_entries:
-    st.sidebar.error(f"{display_name}\nFailed to load")
-
-# Aggregate metrics across replicates
 stage_total_cells = 0
 stage_total_counts = 0.0
 gene_sets = []
 
+# Track shared gene sets and sequencing depth across the loaded replicates.
 for _, adata_obj in stage_datasets:
     gene_sets.append({str(gene) for gene in adata_obj.var_names})
     if "total_counts" in adata_obj.obs:
@@ -148,26 +209,13 @@ else:
         union_genes.update(gene_set)
     available_genes = sorted(union_genes, key=str.lower)
 
+# Derived metrics retained for potential sidebar or summary displays.
 avg_counts = stage_total_counts / stage_total_cells if stage_total_cells else 0.0
 shared_gene_count = len(common_genes) if common_genes else len(available_genes)
 
 st.title(f"🔬 Tangram Data - {selected_stage}")
 
-
-def _sanitize_gene_name(name: str) -> str:
-    return "".join(ch for ch in name.lower() if ch.isalnum())
-
-
-def _match_default_genes(defaults, candidates):
-    lookup = {_sanitize_gene_name(gene): gene for gene in candidates}
-    matched = []
-    for gene in defaults:
-        key = _sanitize_gene_name(gene)
-        value = lookup.get(key)
-        if value and value not in matched:
-            matched.append(value)
-    return matched
-
+# ---- Gene selection UI ----------------------------------------------------
 
 default_gene_candidates = ["Ptf1a", "Gcg", "Col6a1", "Hoxb6", "Mki67"]
 default_genes = _match_default_genes(default_gene_candidates, available_genes)
@@ -185,24 +233,7 @@ selected_genes = st.multiselect(
 plot_kwargs = dict(spot_size=50, scale_factor=0.1, perc=0.01, cmap="inferno")
 
 
-def _resolve_measured_dataset(entry):
-    candidate_ids = [
-        entry.get("primary_sample"),
-        entry.get("key"),
-        entry.get("file_stem"),
-        entry.get("file_name"),
-    ]
-    for candidate in candidate_ids:
-        candidate_key = (candidate or "").strip()
-        if not candidate_key:
-            continue
-        if candidate_key in data_manager.finalized_data:
-            return data_manager.finalized_data[candidate_key]
-        loaded_spatial = data_manager.load_registered_data(candidate_key, finalize=True)
-        if loaded_spatial is not None:
-            return loaded_spatial
-    return None
-
+# ---- Gene expression plots -------------------------------------------------
 
 if selected_genes:
     st.subheader("Gene Expression Across Replicates")
@@ -211,6 +242,7 @@ if selected_genes:
         tab_contexts = list(zip(st.tabs(tab_labels), labeled_stage_datasets))
     else:
         tab_contexts = [(st.container(), labeled_stage_datasets[0])]
+    # Cache measured datasets per tab to keep the UI responsive on reruns.
     measured_cache = {}
     for tab, (label, entry, adata_obj) in tab_contexts:
         with tab:
