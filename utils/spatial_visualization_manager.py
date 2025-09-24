@@ -147,7 +147,7 @@ class SpatialVisualizationManager:
 
             # Resolve desired figure size
             if figsize is None:
-                fig_width, fig_height = (8.0, 8.0)
+                fig_width, fig_height = (9.0, 9.0)
             else:
                 fig_width, fig_height = figsize
 
