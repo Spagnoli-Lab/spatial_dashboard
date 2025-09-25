@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tangram gene expression explorer for E14.5 samples."""
+"""Tangram gene expression explorer for early developmental samples."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ st.set_page_config(
     layout="wide",
 )
 
-TARGET_STAGE = "E14.5"
+TARGET_STAGE_PREFIXES = ("E14.5", "E12.5")
 
 
 @st.cache_resource
@@ -54,14 +54,32 @@ class SampleOption:
     trained_path: Path
 
 
-def _is_target_stage(entry: Dict[str, object]) -> bool:
-    """Return True when the catalog entry belongs to the target stage."""
-    primary = str(entry.get("primary_sample") or "").upper()
-    if primary.startswith(TARGET_STAGE.upper()):
-        return True
+def _matches_stage_prefix(value: str) -> bool:
+    """Return True when a value begins with one of the target stage prefixes."""
+    if not value:
+        return False
+    upper_value = value.upper()
+    return any(upper_value.startswith(prefix.upper()) for prefix in TARGET_STAGE_PREFIXES)
 
-    stem = str(entry.get("file_stem") or "").upper()
-    return stem.startswith(TARGET_STAGE.upper())
+
+def _is_target_stage(entry: Dict[str, object]) -> bool:
+    """Return True when the catalog entry belongs to one of the target stages."""
+    candidates = [
+        entry.get("primary_sample"),
+        entry.get("file_stem"),
+        entry.get("display_name"),
+    ]
+    return any(_matches_stage_prefix(str(candidate or "")) for candidate in candidates)
+
+
+def _shorten_label(value: str) -> str:
+    """Return a concise label without auxiliary annotations."""
+    label = str(value or "").strip()
+    if not label:
+        return ""
+    if " (" in label:
+        label = label.split(" (", 1)[0].strip()
+    return label
 
 
 def _find_trained_path(tangram_path: Path) -> Optional[Path]:
@@ -120,7 +138,7 @@ def _build_sample_options() -> List[SampleOption]:
             continue
 
         option_key = str(entry.get("key") or entry_path.stem)
-        option_label = str(entry.get("display_name") or option_key)
+        option_label = _shorten_label(entry.get("display_name")) or _shorten_label(option_key)
 
         options.append(
             SampleOption(
@@ -141,7 +159,8 @@ st.sidebar.title("Tangram Gene Explorer")
 sample_options = _build_sample_options()
 
 if not sample_options:
-    st.sidebar.error(f"No Tangram datasets found for stage {TARGET_STAGE}.")
+    stages_display = ", ".join(TARGET_STAGE_PREFIXES)
+    st.sidebar.error(f"No Tangram datasets found for stages: {stages_display}.")
     st.stop()
 
 sample_labels = [item.label for item in sample_options]
@@ -226,7 +245,7 @@ st.markdown(
     f"**Genes available:** {len(available_genes):,}"
 )
 
-st.caption(
-    f"Measured: {selected_sample.measured_path.name} · "
-    f"Predicted: {selected_sample.trained_path.name}"
-)
+#st.caption(
+#    f"Measured: {selected_sample.measured_path.name} · "
+#    f"Predicted: {selected_sample.trained_path.name}"
+#)
