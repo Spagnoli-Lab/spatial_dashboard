@@ -50,8 +50,8 @@ if not available_samples:
 
 # Automatically include all available samples
 selected_samples = available_samples.copy()
-st.sidebar.header("📁 Samples")
-st.sidebar.success(f"Using all samples: {', '.join(selected_samples)}")
+#st.sidebar.header("📁 Samples")
+#st.sidebar.success(f"Using all samples: {', '.join(selected_samples)}")
 
 # Data status and loading
 st.sidebar.header("📊 Data Status")
@@ -62,7 +62,7 @@ total_cells = 0
 
 for sample in selected_samples:
     if sample not in data_manager.scrna_data:
-        with st.spinner(f"Loading scRNA-seq data for {sample}..."):
+        with st.spinner(f"Loading scRNA-seq data..."):
             data_manager.load_scrna_data(sample)
     
     if sample in data_manager.scrna_data:
@@ -103,7 +103,7 @@ else:
     adata = anndata.concat(adata_list, join='outer', index_unique=None)
     sample_display_name = f"{len(loaded_samples)} samples ({', '.join(loaded_samples)})"
 
-st.title(f"🧬 ScRNA-seq Data - {sample_display_name}")
+st.title(f"🧬 ScRNA-seq Data")
 
 # Summary statistics
 col1, col2, col3, col4 = st.columns(4)
