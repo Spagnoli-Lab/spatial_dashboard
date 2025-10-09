@@ -20,7 +20,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 # Import utilities
-from utils.data_manager import DataManager
+from utils.data_manager import DataManager, format_sample_label
 from utils.visualization_manager import VisualizationManager
 from utils.spatial_visualization_manager import SpatialVisualizationManager
 
@@ -76,26 +76,19 @@ data_manager, viz_manager, spatial_viz_manager = get_managers()
 registered_catalog = data_manager.get_registered_catalog()
 available_samples = data_manager.get_available_registered_samples()
 
-def _clean_sample_label(label: str) -> str:
-    """Return a concise version of the sample label without metadata suffixes."""
-    if not label:
-        return ""
-    return label.split("(", 1)[0].strip()
-
-
 def _get_sample_label(sample_key: str) -> str:
     entry = registered_catalog.get(sample_key, {})
     candidates = [
         entry.get("primary_sample"),
-        entry.get("key"),
         entry.get("file_stem"),
+        entry.get("display_name"),
         sample_key,
     ]
     for candidate in candidates:
-        cleaned = _clean_sample_label(str(candidate)) if candidate else ""
-        if cleaned:
-            return cleaned
-    return sample_key
+        formatted = format_sample_label(candidate)
+        if formatted:
+            return formatted
+    return str(sample_key)
 
 if not available_samples:
     st.sidebar.error("No spatial datasets detected in the catalog")
