@@ -133,7 +133,7 @@ class SpatialVisualizationManager:
                 return None
             
             # Reuse previously computed enrichment results when available.
-            required_graph_keys = {"spatial_neighbors", "spatial_connectivities"}
+            required_graph_keys = {'spatial_connectivities', 'spatial_distances'}
             if not required_graph_keys.issubset(adata.obsp.keys()):
                 st.error(
                     "Spatial neighbor graph not found. Run the preprocessing script "
@@ -167,7 +167,7 @@ class SpatialVisualizationManager:
             sq.pl.nhood_enrichment(
                 adata,
                 cluster_key=cluster_key,
-                cmap="coolwarm",
+                #cmap="coolwarm",
                 title="Neighborhood enrichment",
                 annotate=True,
                 cbar_kwargs={"shrink": 0.7},
