@@ -13,6 +13,34 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+
+SAMPLE_LABEL_PATTERN = re.compile(r"(?i)(E\d+(?:\.\d+)?)(?:[_-]?(\d+))?")
+
+
+def format_sample_label(value: Optional[str]) -> str:
+    """Return a human-friendly representation of a developmental sample label."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    match = SAMPLE_LABEL_PATTERN.search(text)
+    if not match:
+        return text
+
+    stage_token = match.group(1).upper()
+    stage_value = stage_token[1:]
+    parts = [f"Embryonic Day {stage_value}"]
+
+    mouse_token = match.group(2)
+    if mouse_token:
+        try:
+            mouse_value = int(mouse_token)
+        except ValueError:
+            mouse_value = mouse_token
+        parts.append(f"Mouse {mouse_value}")
+
+    return ", ".join(parts)
+
 class DataManager:
     """Manages data loading and processing for all three data types"""
     
@@ -29,7 +57,8 @@ class DataManager:
         else:
             self.data_dir = self.spatial_data_dir  # Default to spatial data directory
         
-        self.scrna_data = {}  # Dictionary to store scRNA-seq data by sample
+        self.scrna_data = {}  # Dictionary to store scRNA-seq data by sample (legacy cache)
+        self._scrna_dataset: Optional[anndata.AnnData] = None  # Cache for combined scRNA-seq dataset
         self.registered_data: Dict[str, anndata.AnnData] = {}
         self.finalized_data: Dict[str, anndata.AnnData] = {}
         self._registered_catalog: Optional[Dict[str, Dict]] = None
@@ -133,99 +162,109 @@ class DataManager:
 
     # --- scRNA-seq (Page 2) ---
 
-    def load_scrna_data(self, sample: str) -> anndata.AnnData:
-        """Load scRNA-seq data for specific sample"""
+    def _read_scrna_file(self) -> Optional[anndata.AnnData]:
+        """Return the combined scRNA-seq AnnData object from disk."""
+        if self._scrna_dataset is not None:
+            return self._scrna_dataset
+
         try:
-            # Specific path for Cartana.h5ad file
-            cartana_path = self.scrna_data_dir / "Cartana_simplified.h5ad"
-            
-            # Check if Cartana.h5ad exists and load it
-            if cartana_path.exists():
-                file_path = str(cartana_path)
-                adata = anndata.read_h5ad(file_path)
-                
-                # Filter data based on selected sample (orig.ident)
-                if 'orig.ident' in adata.obs.columns:
-                    # Filter to only include cells from the selected sample
-                    sample_mask = adata.obs['orig.ident'] == sample
-                    adata = adata[sample_mask].copy()
-                    
-                    if adata.n_obs == 0:
-                        st.error(f"No cells found for sample '{sample}' in orig.ident")
-                        return None
-                
-                # Calculate quality metrics
-                adata.obs['total_counts'] = np.sum(adata.X, axis=1)
-                adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
-                adata.var['total_counts'] = np.sum(adata.X, axis=0)
-                adata.var['n_cells_by_counts'] = np.sum(adata.X > 0, axis=0)
-                
-                self.scrna_data[sample] = adata
-                return adata
-            else:
-                # Fallback to original logic for other samples
-                sample_files = list(self.scrna_data_dir.glob(f"*{sample}*scrna*.h5ad"))
-                if not sample_files:
-                    sample_files = list(self.scrna_data_dir.glob(f"*{sample}*.h5ad"))
-                
-                if sample_files:
-                    file_path = str(sample_files[0])
-                    adata = anndata.read_h5ad(file_path)
-                    
-                    # Calculate quality metrics
-                    adata.obs['total_counts'] = np.sum(adata.X, axis=1)
-                    adata.obs['n_genes_by_counts'] = np.sum(adata.X > 0, axis=1)
-                    adata.var['total_counts'] = np.sum(adata.X, axis=0)
-                    adata.var['n_cells_by_counts'] = np.sum(adata.X > 0, axis=0)
-                    
-                    self.scrna_data[sample] = adata
-                    return adata
-                else:
-                    st.error(f"No scRNA-seq data found for sample {sample}")
-                    return None
-        except Exception as e:
-            st.error(f"Error loading scRNA-seq data for {sample}: {e}")
+            candidate_paths = [
+                self.scrna_data_dir / "Cartana_simplified_fixname.h5ad"
+                #self.scrna_data_dir / "Cartana_simplified.h5ad",
+                #self.scrna_data_dir / "Cartana.h5ad",
+            ]
+
+            adata: Optional[anndata.AnnData] = None
+            for path in candidate_paths:
+                if path.exists():
+                    adata = anndata.read_h5ad(str(path))
+                    break
+
+            if adata is None:
+                # Fallback: load the first .h5ad in the directory
+                fallback_files = sorted(self.scrna_data_dir.glob("*.h5ad"))
+                if fallback_files:
+                    adata = anndata.read_h5ad(str(fallback_files[0]))
+
+            if adata is None:
+                st.error("No scRNA-seq dataset found in the expected directory")
+                return None
+
+            # Calculate quality metrics once for downstream use
+            adata.obs['total_counts'] = np.asarray(np.sum(adata.X, axis=1)).ravel()
+            adata.obs['n_genes_by_counts'] = np.asarray(np.sum(adata.X > 0, axis=1)).ravel()
+            adata.var['total_counts'] = np.asarray(np.sum(adata.X, axis=0)).ravel()
+            adata.var['n_cells_by_counts'] = np.asarray(np.sum(adata.X > 0, axis=0)).ravel()
+
+            self._scrna_dataset = adata
+            self.scrna_data['ALL'] = adata
+            return adata
+        except Exception as exc:
+            st.error(f"Error loading scRNA-seq dataset: {exc}")
             return None
 
-    def get_scrna_available_samples(self) -> List[str]:
-        """Get list of available samples (E12, E14, E17) for scRNA-seq data"""
-        samples = []
-        for file_path in self.scrna_data_dir.glob("*.h5ad"):
-            file_name = file_path.name.lower()
-            if 'e12' in file_name and 'e12' not in samples:
-                samples.append('E12')
-            elif 'e14' in file_name and 'e14' not in samples:
-                samples.append('E14')
-            elif 'e17' in file_name and 'e17' not in samples:
-                samples.append('E17')
-        
-        # If no samples found, return default list
-        if not samples:
-            samples = ['E12', 'E14', 'E17']  # Default options
-        
-        return sorted(samples)
+    def load_all_scrna_data(self) -> Optional[anndata.AnnData]:
+        """Load the full scRNA-seq dataset without per-sample filtering."""
+        return self._read_scrna_file()
+
+    # NOTE: Unused directly by current dashboard pages; retained for legacy references.
+    # def load_scrna_data(self, sample: Optional[str] = None) -> Optional[anndata.AnnData]:
+    #     """Maintain backwards compatibility while preferring the combined dataset."""
+    #     adata = self._read_scrna_file()
+    #     if adata is None:
+    #         return None
+    #
+    #     if sample in (None, 'ALL'):
+    #         self.scrna_data['ALL'] = adata
+    #         return adata
+    #
+    #     if 'orig.ident' in adata.obs.columns:
+    #         if sample in adata.obs['orig.ident'].unique():
+    #             subset = adata[adata.obs['orig.ident'] == sample].copy()
+    #             self.scrna_data[sample] = subset
+    #             return subset
+    #         st.warning(f"Sample '{sample}' not found in orig.ident; returning full dataset")
+    #
+    #     return adata
+
+    def refresh_scrna_data(self):
+        """Clear cached scRNA-seq datasets."""
+        self._scrna_dataset = None
+        self.scrna_data.clear()
+
+    # NOTE: Unused by dashboard pages; preserved for potential utility scripts.
+    # def get_scrna_available_samples(self) -> List[str]:
+    #     """Get list of available samples (E12, E14, E17) for scRNA-seq data"""
+    #     samples = []
+    #     for file_path in self.scrna_data_dir.glob("*.h5ad"):
+    #         file_name = file_path.name.lower()
+    #         if 'e12' in file_name and 'e12' not in samples:
+    #             samples.append('E12')
+    #         elif 'e14' in file_name and 'e14' not in samples:
+    #             samples.append('E14')
+    #         elif 'e17' in file_name and 'e17' not in samples:
+    #             samples.append('E17')
+    #
+    #     # If no samples found, return default list
+    #     if not samples:
+    #         samples = ['E12', 'E14', 'E17']  # Default options
+    #
+    #     return sorted(samples)
 
     def get_scrna_sample_options(self) -> List[str]:
         """Get unique orig.ident values from Cartana.h5ad file for scRNA-seq sample selection"""
         try:
-            cartana_path = self.scrna_data_dir / "Cartana.h5ad"
-            
-            if cartana_path.exists():
-                # Load the Cartana.h5ad file temporarily to get orig.ident values
-                adata = anndata.read_h5ad(cartana_path)
-                
-                # Check if orig.ident column exists
-                if 'orig.ident' in adata.obs.columns:
-                    unique_identities = sorted(adata.obs['orig.ident'].unique().tolist())
-                    return unique_identities
-                else:
-                    # If orig.ident doesn't exist, return default options
-                    return ['E12', 'E14', 'E17']
-            else:
-                # Fallback to default options if file doesn't exist
+            adata = self._read_scrna_file()
+            if adata is None:
                 return ['E12', 'E14', 'E17']
+
+            if 'orig.ident' in adata.obs.columns:
+                unique_identities = sorted(adata.obs['orig.ident'].astype(str).unique().tolist())
+                return unique_identities
+
+            return ['E12', 'E14', 'E17']
         except Exception as e:
-            print(f"Error reading Cartana.h5ad for sample options: {e}")
+            print(f"Error determining scRNA-seq sample options: {e}")
             return ['E12', 'E14', 'E17']
 
     # --- Registered Data (Spatial & Tangram Pages) ---
@@ -529,51 +568,55 @@ class DataManager:
 
     # --- Dashboard Summary & Maintenance ---
 
-    def get_data_summary(self) -> Dict:
-        """Get summary of all loaded data"""
-        summary = {
-            'scrna_samples': list(self.scrna_data.keys()),
-            'finalized_samples': list(self.finalized_data.keys()),
-            'registered_samples': list(self.registered_data.keys()),
-            'total_samples': len(set(list(self.scrna_data.keys()) +
-                                   list(self.finalized_data.keys()) +
-                                   list(self.registered_data.keys())))
-        }
-        return summary
+    # NOTE: Currently unused by dashboard pages; kept for future reporting utilities.
+    # def get_data_summary(self) -> Dict:
+    #     """Get summary of all loaded data"""
+    #     summary = {
+    #         'scrna_samples': list(self.scrna_data.keys()),
+    #         'finalized_samples': list(self.finalized_data.keys()),
+    #         'registered_samples': list(self.registered_data.keys()),
+    #         'total_samples': len(set(list(self.scrna_data.keys()) +
+    #                                list(self.finalized_data.keys()) +
+    #                                list(self.registered_data.keys())))
+    #     }
+    #     return summary
 
-    def clear_data(self, data_type: str = None, sample: str = None):
-        """Clear loaded data"""
-        if data_type == 'scrna' or data_type is None:
-            if sample:
-                self.scrna_data.pop(sample, None)
-            else:
-                self.scrna_data.clear()
-        
-        if data_type == 'spatial' or data_type is None:
-            if sample:
-                spatial_key = self._resolve_registered_key(sample, finalized=True)
-                if spatial_key:
-                    self.finalized_data.pop(spatial_key, None)
-                    aliases_to_purge = [alias for alias, key in list(self._registered_alias_map.items()) if key == spatial_key]
-                    for alias in aliases_to_purge:
-                        self._dapi_cache.pop(alias.lower(), None)
-                    self._dapi_cache.pop(spatial_key.lower(), None)
-            else:
-                self.finalized_data.clear()
-                self._dapi_cache.clear()
-
-        if data_type == 'tangram' or data_type is None:
-            if sample:
-                canonical = self._registered_alias_map.get(sample.lower(), sample)
-                self.registered_data.pop(canonical, None)
-                self.finalized_data.pop(canonical, None)
-                aliases_to_remove = [alias for alias, key in list(self._registered_alias_map.items()) if key == canonical]
-                for alias in aliases_to_remove:
-                    self._registered_alias_map.pop(alias, None)
-                    self._dapi_cache.pop(alias, None)
-                self._dapi_cache.pop(canonical.lower(), None)
-            else:
-                self.registered_data.clear()
-                self.finalized_data.clear()
-                self._registered_alias_map.clear()
-                self._dapi_cache.clear()
+    # NOTE: Not invoked by dashboard pages; commented to reduce unused surface area.
+    # def clear_data(self, data_type: str = None, sample: str = None):
+    #     """Clear loaded data"""
+    #     if data_type == 'scrna' or data_type is None:
+    #         if sample:
+    #             self.scrna_data.pop(sample, None)
+    #             if sample == 'ALL' or not self.scrna_data:
+    #                 self._scrna_dataset = None
+    #         else:
+    #             self.refresh_scrna_data()
+    #
+    #     if data_type == 'spatial' or data_type is None:
+    #         if sample:
+    #             spatial_key = self._resolve_registered_key(sample, finalized=True)
+    #             if spatial_key:
+    #                 self.finalized_data.pop(spatial_key, None)
+    #                 aliases_to_purge = [alias for alias, key in list(self._registered_alias_map.items()) if key == spatial_key]
+    #                 for alias in aliases_to_purge:
+    #                     self._dapi_cache.pop(alias.lower(), None)
+    #                 self._dapi_cache.pop(spatial_key.lower(), None)
+    #         else:
+    #             self.finalized_data.clear()
+    #             self._dapi_cache.clear()
+    #
+    #     if data_type == 'tangram' or data_type is None:
+    #         if sample:
+    #             canonical = self._registered_alias_map.get(sample.lower(), sample)
+    #             self.registered_data.pop(canonical, None)
+    #             self.finalized_data.pop(canonical, None)
+    #             aliases_to_remove = [alias for alias, key in list(self._registered_alias_map.items()) if key == canonical]
+    #             for alias in aliases_to_remove:
+    #                 self._registered_alias_map.pop(alias, None)
+    #                 self._dapi_cache.pop(alias, None)
+    #             self._dapi_cache.pop(canonical.lower(), None)
+    #         else:
+    #             self.registered_data.clear()
+    #             self.finalized_data.clear()
+    #             self._registered_alias_map.clear()
+    #             self._dapi_cache.clear()
