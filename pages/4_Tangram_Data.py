@@ -1,266 +1,261 @@
 #!/usr/bin/env python3
-"""
-Tangram Data Analysis Page grouped by developmental stage.
-"""
+"""Tangram gene expression explorer for early developmental samples."""
 
-import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
-import tangram as tg
+from __future__ import annotations
+
+import re
 from pathlib import Path
 import sys
-import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
-# Add the project root to the Python path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
+import anndata
+import matplotlib.pyplot as plt
+import streamlit as st
+import tangram as tg
 
-# Import utilities
-from utils.data_manager import DataManager
+# Ensure project utilities are importable when page is executed directly.
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+from utils.data_manager import DataManager, format_sample_label  # noqa: E402
 
 st.set_page_config(
     page_title="Tangram Data - Spatial Transcriptomics Dashboard",
-    page_icon="🔬",
-    layout="wide"
+    page_icon="🧬",
+    layout="wide",
 )
 
-# Initialize data manager
+TARGET_STAGE_PREFIXES = ("E14.5", "E12.5")
+
+
 @st.cache_resource
-def get_data_manager():
+def get_data_manager() -> DataManager:
     return DataManager()
 
 
 data_manager = get_data_manager()
 
-# ---- Helper utilities -----------------------------------------------------
 
-def _group_catalog_by_stage(catalog):
-    """Return registered entries grouped by developmental stage label."""
-    stage_groups = {}
-    for entry in catalog.values():
-        dataset_key = entry.get("key")
-        if not dataset_key:
-            continue
-        primary_value = (entry.get("primary_sample") or dataset_key).upper()
-        stage_match = re.match(r"(E\d+)", primary_value)
-        stage_label = stage_match.group(1) if stage_match else primary_value
-        stage_groups.setdefault(stage_label, []).append(entry)
-    return stage_groups
+@st.cache_resource
+def _load_predicted_dataset(path_str: str) -> anndata.AnnData:
+    """Read and memoise a Tangram predicted dataset."""
+    return anndata.read_h5ad(path_str)
 
 
-def _clean_sample_label(label: str) -> str:
-    if not label:
-        return ""
-    return label.split("(", 1)[0].strip()
+@dataclass(frozen=True)
+class SampleOption:
+    """UI representation of a Tangram dataset and its prediction pair."""
+
+    key: str
+    label: str
+    measured_path: Path
+    trained_path: Path
 
 
-def _entry_sample_label(entry):
-    """Return a concise sample label for UI display."""
+def _matches_stage_prefix(value: str) -> bool:
+    """Return True when a value begins with one of the target stage prefixes."""
+    if not value:
+        return False
+    upper_value = value.upper()
+    return any(upper_value.startswith(prefix.upper()) for prefix in TARGET_STAGE_PREFIXES)
+
+
+def _is_target_stage(entry: Dict[str, object]) -> bool:
+    """Return True when the catalog entry belongs to one of the target stages."""
     candidates = [
         entry.get("primary_sample"),
-        entry.get("key"),
         entry.get("file_stem"),
-        entry.get("file_name"),
+        entry.get("display_name"),
     ]
-    for candidate in candidates:
-        cleaned = _clean_sample_label(str(candidate)) if candidate else ""
-        if cleaned:
-            return cleaned
-    fallback = _clean_sample_label(str(entry.get("key", "")))
-    return fallback or str(entry.get("key", ""))
+    return any(_matches_stage_prefix(str(candidate or "")) for candidate in candidates)
 
 
-def _load_stage_datasets(selected_entries, should_reload):
-    """Load Tangram data for the selected replicates."""
-    stage_datasets = []
-    failed_entries = []
+def _find_trained_path(tangram_path: Path) -> Optional[Path]:
+    """Locate the trained predictions that correspond to a Tangram dataset."""
+    if not tangram_path.exists():
+        return None
 
-    for entry in selected_entries:
-        dataset_key = entry["key"]
-        display_label = _entry_sample_label(entry)
-        needs_reload = should_reload or dataset_key not in data_manager.registered_data
-        if needs_reload:
-            with st.spinner(f"Loading Tangram data for {display_label}..."):
-                data_manager.load_registered_data(dataset_key)
-        adata_obj = data_manager.registered_data.get(dataset_key)
-        if adata_obj is None:
-            failed_entries.append(display_label)
+    folder = tangram_path.parent
+    stem = tangram_path.stem
+    base_name = re.sub(r"(?i)_tangram$", "", stem)
+
+    candidate_names = (
+        f"{base_name}_trained.h5ad",
+        f"{base_name}_Trained.h5ad",
+        stem.replace("Tangram", "trained") + ".h5ad",
+        stem.replace("tangram", "trained") + ".h5ad",
+    )
+
+    for name in candidate_names:
+        candidate = folder / name
+        if candidate.is_file() and candidate.name.lower().endswith("trained.h5ad"):
+            return candidate
+
+    base_fragment = base_name.lower()
+    for file_path in sorted(folder.glob("*trained.h5ad")):
+        if not file_path.is_file():
             continue
-        stage_datasets.append((entry, adata_obj))
-
-    return stage_datasets, failed_entries
-
-
-def _label_stage_datasets(stage_datasets):
-    """Attach unique UI labels to each replicate entry."""
-    labeled_stage_datasets = []
-    used_labels = set()
-    for entry, adata_obj in stage_datasets:
-        label = _entry_sample_label(entry)
-        if label in used_labels:
-            label = f"{label} [{entry['key']}]"
-        used_labels.add(label)
-        labeled_stage_datasets.append((label, entry, adata_obj))
-    return labeled_stage_datasets
-
-
-def _sanitize_gene_name(name: str) -> str:
-    """Return a normalised gene identifier for lookups."""
-    return "".join(ch for ch in name.lower() if ch.isalnum())
-
-
-def _match_default_genes(defaults, candidates):
-    """Cross-reference preferred defaults against available genes."""
-    lookup = {_sanitize_gene_name(gene): gene for gene in candidates}
-    matched = []
-    for gene in defaults:
-        key = _sanitize_gene_name(gene)
-        value = lookup.get(key)
-        if value and value not in matched:
-            matched.append(value)
-    return matched
-
-
-def _resolve_measured_dataset(entry):
-    """Best-effort lookup of the measured dataset associated with a replicate."""
-    candidate_ids = [
-        entry.get("primary_sample"),
-        entry.get("key"),
-        entry.get("file_stem"),
-        entry.get("file_name"),
-    ]
-    for candidate in candidate_ids:
-        candidate_key = (candidate or "").strip()
-        if not candidate_key:
+        if base_fragment and base_fragment not in file_path.stem.lower():
             continue
-        if candidate_key in data_manager.finalized_data:
-            return data_manager.finalized_data[candidate_key]
-        loaded_spatial = data_manager.load_registered_data(candidate_key, finalize=True)
-        if loaded_spatial is not None:
-            return loaded_spatial
+        return file_path
+
     return None
 
 
-# ---- Sidebar configuration -------------------------------------------------
+def _build_sample_options() -> List[SampleOption]:
+    """Return sidebar options constrained to the target developmental stage."""
+    catalog = data_manager.get_registered_catalog() or {}
+    options: List[SampleOption] = []
 
-st.sidebar.title("🔬 Tangram Data Analysis")
-st.sidebar.header("Tangram Dataset Selection")
+    for entry in catalog.values():
+        if not _is_target_stage(entry):
+            continue
 
-registered_catalog = data_manager.get_registered_catalog()
-stage_groups = _group_catalog_by_stage(registered_catalog)
+        entry_path = Path(entry.get("path", ""))
+        if not entry_path.exists() or "tangram" not in entry_path.name.lower():
+            continue
 
-if not stage_groups:
-    st.sidebar.error("No Tangram datasets found in the data directory")
-    st.info("Add .h5ad files whose names end with Tangram.h5ad to the data directory.")
+        trained_path = _find_trained_path(entry_path)
+        if trained_path is None or "trained" not in trained_path.name.lower():
+            continue
+
+        option_key = str(entry.get("key") or entry_path.stem)
+
+        label_candidates = [
+            entry.get("primary_sample"),
+            entry.get("file_stem"),
+            entry.get("display_name"),
+            option_key,
+            entry_path.stem,
+        ]
+
+        option_label = next(
+            (
+                formatted
+                for candidate in label_candidates
+                for formatted in [format_sample_label(candidate)]
+                if formatted
+            ),
+            option_key,
+        )
+
+        options.append(
+            SampleOption(
+                key=option_key,
+                label=option_label,
+                measured_path=entry_path,
+                trained_path=trained_path,
+            )
+        )
+
+    options.sort(key=lambda item: item.label.lower())
+    return options
+
+
+# ---- Sidebar --------------------------------------------------------------
+
+st.sidebar.title("Tangram Data")
+sample_options = _build_sample_options()
+
+if not sample_options:
+    stages_display = ", ".join(TARGET_STAGE_PREFIXES)
+    st.sidebar.error(f"No Tangram datasets found for stages: {stages_display}.")
     st.stop()
 
-stage_options = sorted(stage_groups.keys())
-selected_stage = st.sidebar.selectbox(
-    "Select developmental day:",
-    stage_options,
-    help="Tangram replicates load automatically for the selected developmental stage."
-)
+st.sidebar.header("🔬 Available Visualizations")
+st.sidebar.markdown("""
+- **Spatial gene expression**: Compare predicted vs measured signal
+""")
 
-selected_entries = sorted(
-    stage_groups[selected_stage],
-    key=lambda entry: _entry_sample_label(entry).lower()
-)
+st.title("Tangram Data Explorer")
 
-reload_stage = st.sidebar.button("🔄 Reload Stage Data")
+sample_labels = [item.label for item in sample_options]
+selection_col, gene_col = st.columns([1, 1])
 
-stage_datasets, failed_entries = _load_stage_datasets(selected_entries, reload_stage)
+with selection_col:
+    selected_label = st.selectbox("Select sample", sample_labels)
 
-if not stage_datasets:
-    st.error(f"Failed to load Tangram data for {selected_stage}")
-    st.info("Please check that Tangram data files exist for this stage.")
+selected_sample = next(item for item in sample_options if item.label == selected_label)
+
+# ---- Load Tangram data ----------------------------------------------------
+
+with st.spinner(f"Loading Tangram measurements for {selected_label}..."):
+    adata_measured = data_manager.load_registered_data(selected_sample.key)
+
+if adata_measured is None:
+    st.error(f"Unable to load Tangram data for {selected_label}.")
     st.stop()
 
-labeled_stage_datasets = _label_stage_datasets(stage_datasets)
+with st.spinner(f"Loading Tangram predictions for {selected_label}..."):
+    adata_predicted = _load_predicted_dataset(str(selected_sample.trained_path))
 
-# ---- Stage-level summaries -------------------------------------------------
+# ---- Gene selection -------------------------------------------------------
 
-stage_total_cells = 0
-stage_total_counts = 0.0
-gene_sets = []
+measured_genes = {str(gene) for gene in adata_measured.var_names}
+predicted_genes = [str(gene) for gene in adata_predicted.var_names]
+available_genes = sorted(predicted_genes, key=str.lower)
 
-# Track shared gene sets and sequencing depth across the loaded replicates.
-for _, adata_obj in stage_datasets:
-    gene_sets.append({str(gene) for gene in adata_obj.var_names})
-    if "total_counts" in adata_obj.obs:
-        counts = np.asarray(adata_obj.obs["total_counts"], dtype=float)
-    else:
-        counts = np.asarray(np.sum(adata_obj.X, axis=1)).ravel()
-    stage_total_cells += int(adata_obj.n_obs)
-    stage_total_counts += float(np.sum(counts))
+if not available_genes:
+    st.error("No genes were found in the trained Tangram dataset.")
+    st.stop()
 
-if gene_sets:
-    if len(gene_sets) == 1:
-        common_genes = sorted(next(iter(gene_sets)), key=str.lower)
-    else:
-        common_genes = sorted(set.intersection(*gene_sets), key=str.lower)
-else:
-    common_genes = []
+preferred_defaults = ["gcg", "ptf1a", "nkx6.1", "Rbpjl"]
+available_lookup = {gene.lower(): gene for gene in available_genes}
+default_genes = [
+    available_lookup[name.lower()]
+    for name in preferred_defaults
+    if name.lower() in available_lookup
+]
 
-if common_genes:
-    available_genes = common_genes
-else:
-    union_genes = set()
-    for gene_set in gene_sets:
-        union_genes.update(gene_set)
-    available_genes = sorted(union_genes, key=str.lower)
+if not default_genes:
+    default_genes = available_genes[:4]
+with gene_col:
+    selected_genes = st.multiselect(
+        "Select genes",
+        available_genes,
+        default=default_genes,
+        help="Pick genes to visualise across measured and predicted spaces.",
+    )
 
-# Derived metrics retained for potential sidebar or summary displays.
-avg_counts = stage_total_counts / stage_total_cells if stage_total_cells else 0.0
-shared_gene_count = len(common_genes) if common_genes else len(available_genes)
+if not selected_genes:
+    st.info("Select at least one gene to generate a plot.")
+    st.stop()
 
-st.title(f"🔬 Tangram Data - {selected_stage}")
+missing_genes = sorted({gene for gene in selected_genes if gene not in measured_genes}, key=str.lower)
+if missing_genes:
+    missing_display = ", ".join(missing_genes)
+    st.warning(
+        "Measured Tangram data do not contain: "
+        f"{missing_display}. Predicted expression will still be shown where possible."
+    )
 
-# ---- Gene selection UI ----------------------------------------------------
+# ---- Plotting -------------------------------------------------------------
 
-default_gene_candidates = ["Ptf1a", "Gcg", "Col6a1", "Hoxb6", "Mki67"]
-default_genes = _match_default_genes(default_gene_candidates, available_genes)
-if not default_genes and available_genes:
-    default_genes = available_genes[: min(5, len(available_genes))]
+st.subheader(f"Spatial gene expression for {selected_label}")
 
-st.subheader("Gene Selection")
-selected_genes = st.multiselect(
-    "Genes to visualise",
-    options=available_genes,
-    default=default_genes,
-    help="Select one or more genes shared across the loaded Tangram replicates."
-)
+try:
+    plt.close("all")
+    tg.plot_genes_sc(
+        selected_genes,
+        adata_measured=adata_measured,
+        adata_predicted=adata_predicted,
+        spot_size=50,
+        scale_factor=0.1,
+        perc=0.01,
+        return_figure=False,
+        cmap="inferno",
+    )
+    fig = plt.gcf()
+    plot_col, _ = st.columns([0.7, 0.3])
+    with plot_col:
+        st.pyplot(fig, use_container_width=True)
+finally:
+    plt.close("all")
 
-plot_kwargs = dict(spot_size=50, scale_factor=0.1, perc=0.01, cmap="inferno")
-
-
-# ---- Gene expression plots -------------------------------------------------
-
-if selected_genes:
-    st.subheader("Gene Expression Across Replicates")
-    tab_labels = [label for label, _, _ in labeled_stage_datasets]
-    if len(tab_labels) > 1:
-        tab_contexts = list(zip(st.tabs(tab_labels), labeled_stage_datasets))
-    else:
-        tab_contexts = [(st.container(), labeled_stage_datasets[0])]
-    # Cache measured datasets per tab to keep the UI responsive on reruns.
-    measured_cache = {}
-    for tab, (label, entry, adata_obj) in tab_contexts:
-        with tab:
-            adata_measured = measured_cache.get(label)
-            if adata_measured is None:
-                adata_measured = _resolve_measured_dataset(entry) or adata_obj
-                measured_cache[label] = adata_measured
-            try:
-                fig = tg.plot_genes_sc(
-                    selected_genes,
-                    adata_measured=adata_measured,
-                    adata_predicted=adata_obj,
-                    return_figure=True,
-                    **plot_kwargs,
-                )
-                st.pyplot(fig)
-                plt.close(fig)
-            except Exception as exc:
-                st.warning(f"Unable to render gene panel for {label}: {exc}")
-else:
-    st.info("Select at least one gene to display expression plots.")
+# Provide context statistics for users exploring genes.
+#st.markdown(
+#    f"**Loaded cells:** {adata_measured.n_obs:,} · "
+#    f"**Genes available:** {len(available_genes):,}"
+#)

@@ -91,11 +91,8 @@ def render_home_page() -> None:
     """
     | Stage | Description | Key Features |
     |-------|-------------|--------------|
-    | **E12** | Early embryonic development | Initial cell type specification |
-    | **E14** | Mid-embryonic development | Tissue patterning and growth |
-    | **E17** | Late embryonic development | Mature tissue organisation |
-    
-    
+    | **E12.5** | Early embryonic development | Initial cell type specification |
+    | **E14.5** | Mid-embryonic development | Tissue patterning and growth |
     ---
     """
     )
@@ -133,7 +130,7 @@ def render_home_page() -> None:
     """
     ### Quick Start Guide
     1. Navigate to a page using the sidebar  
-    2. Select your sample (E12.5, E14.5, E17.5)  
+    2. Select your sample (E12.5, E14.5)  
     3. Load the relevant datasets  
     4. Explore the interactive visualisations  
     5. Compare stages by switching between samples  
