@@ -12,6 +12,7 @@ import seaborn as sns
 import anndata
 from pathlib import Path
 import sys
+import copy
 from typing import Optional, Tuple
 
 # Try to import squidpy
@@ -131,19 +132,29 @@ class SpatialVisualizationManager:
                 st.error(f"Cluster key '{cluster_key}' not found in adata.obs")
                 return None
             
-            # Compute spatial neighbors if not already done
-            if 'spatial_neighbors' not in adata.obsp:
-                with st.spinner("Computing spatial neighbors..."):
-                    sq.gr.spatial_neighbors(adata, coord_type="generic", radius=200, delaunay=True)
-            
-            # Compute neighborhood enrichment
-            #sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
-            
-            # Create the plot
-            #fig, ax = plt.subplots(figsize=(5, 4))
-            
-            # Compute neighborhood enrichment
-            sq.gr.nhood_enrichment(adata, cluster_key=cluster_key)
+            # Reuse previously computed enrichment results when available.
+            required_graph_keys = {"spatial_neighbors", "spatial_connectivities"}
+            if not required_graph_keys.issubset(adata.obsp.keys()):
+                st.error(
+                    "Spatial neighbor graph not found. Run the preprocessing script "
+                    "to populate spatial neighbors and enrichment matrices."
+                )
+                return None
+
+            cache_bucket = adata.uns.get("cached_nhood_enrichment", {})
+            cached_result = cache_bucket.get(cluster_key)
+
+            if cached_result is not None:
+                adata.uns["nhood_enrichment"] = copy.deepcopy(cached_result)
+            else:
+                existing = adata.uns.get("nhood_enrichment")
+                if not existing or existing.get("cluster_key") != cluster_key:
+                    st.error(
+                        "Precomputed neighborhood enrichment not found for "
+                        f"cluster key '{cluster_key}'. Run the preprocessing "
+                        "script and reload this dataset."
+                    )
+                    return None
 
             # Resolve desired figure size
             if figsize is None:
@@ -158,28 +169,10 @@ class SpatialVisualizationManager:
                 cluster_key=cluster_key,
                 cmap="coolwarm",
                 title="Neighborhood enrichment",
-                #figsize=(fig_width, fig_height),
                 annotate=True,
                 cbar_kwargs={"shrink": 0.7},
                 ax=ax
             )
-
-            # Apply consistent font sizing after squidpy draws the heatmap
-            #ax.set_title(ax.get_title(), fontsize=12)
-            #ax.tick_params(axis="both", which="major", labelsize=8)
-            #for label in ax.get_xticklabels():
-            #    label.set_fontsize(8)
-            #    label.set_rotation(45)
-            #    label.set_horizontalalignment("right")
-            #for label in ax.get_yticklabels():
-            #    label.set_fontsize(8)
-            # Resize colourbar typography if present
-            #if len(fig.axes) > 1:
-            #    colorbar_ax = fig.axes[-1]
-            #    colorbar_ax.tick_params(labelsize=8)
-            #    if colorbar_ax.get_title():
-            #        colorbar_ax.set_title(colorbar_ax.get_title(), fontsize=10)
-            #plt.tight_layout()
 
             return fig
             
