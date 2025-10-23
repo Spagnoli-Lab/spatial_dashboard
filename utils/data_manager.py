@@ -170,8 +170,6 @@ class DataManager:
         try:
             candidate_paths = [
                 self.scrna_data_dir / "Cartana_simplified_fixname.h5ad"
-                #self.scrna_data_dir / "Cartana_simplified.h5ad",
-                #self.scrna_data_dir / "Cartana.h5ad",
             ]
 
             adata: Optional[anndata.AnnData] = None
@@ -207,49 +205,12 @@ class DataManager:
         """Load the full scRNA-seq dataset without per-sample filtering."""
         return self._read_scrna_file()
 
-    # NOTE: Unused directly by current dashboard pages; retained for legacy references.
-    # def load_scrna_data(self, sample: Optional[str] = None) -> Optional[anndata.AnnData]:
-    #     """Maintain backwards compatibility while preferring the combined dataset."""
-    #     adata = self._read_scrna_file()
-    #     if adata is None:
-    #         return None
-    #
-    #     if sample in (None, 'ALL'):
-    #         self.scrna_data['ALL'] = adata
-    #         return adata
-    #
-    #     if 'orig.ident' in adata.obs.columns:
-    #         if sample in adata.obs['orig.ident'].unique():
-    #             subset = adata[adata.obs['orig.ident'] == sample].copy()
-    #             self.scrna_data[sample] = subset
-    #             return subset
-    #         st.warning(f"Sample '{sample}' not found in orig.ident; returning full dataset")
-    #
-    #     return adata
 
     def refresh_scrna_data(self):
         """Clear cached scRNA-seq datasets."""
         self._scrna_dataset = None
         self.scrna_data.clear()
 
-    # NOTE: Unused by dashboard pages; preserved for potential utility scripts.
-    # def get_scrna_available_samples(self) -> List[str]:
-    #     """Get list of available samples (E12, E14, E17) for scRNA-seq data"""
-    #     samples = []
-    #     for file_path in self.scrna_data_dir.glob("*.h5ad"):
-    #         file_name = file_path.name.lower()
-    #         if 'e12' in file_name and 'e12' not in samples:
-    #             samples.append('E12')
-    #         elif 'e14' in file_name and 'e14' not in samples:
-    #             samples.append('E14')
-    #         elif 'e17' in file_name and 'e17' not in samples:
-    #             samples.append('E17')
-    #
-    #     # If no samples found, return default list
-    #     if not samples:
-    #         samples = ['E12', 'E14', 'E17']  # Default options
-    #
-    #     return sorted(samples)
 
     def get_scrna_sample_options(self) -> List[str]:
         """Get unique orig.ident values from Cartana.h5ad file for scRNA-seq sample selection"""
@@ -566,57 +527,3 @@ class DataManager:
         entry['dapi_path'] = best_file
         return best_file
 
-    # --- Dashboard Summary & Maintenance ---
-
-    # NOTE: Currently unused by dashboard pages; kept for future reporting utilities.
-    # def get_data_summary(self) -> Dict:
-    #     """Get summary of all loaded data"""
-    #     summary = {
-    #         'scrna_samples': list(self.scrna_data.keys()),
-    #         'finalized_samples': list(self.finalized_data.keys()),
-    #         'registered_samples': list(self.registered_data.keys()),
-    #         'total_samples': len(set(list(self.scrna_data.keys()) +
-    #                                list(self.finalized_data.keys()) +
-    #                                list(self.registered_data.keys())))
-    #     }
-    #     return summary
-
-    # NOTE: Not invoked by dashboard pages; commented to reduce unused surface area.
-    # def clear_data(self, data_type: str = None, sample: str = None):
-    #     """Clear loaded data"""
-    #     if data_type == 'scrna' or data_type is None:
-    #         if sample:
-    #             self.scrna_data.pop(sample, None)
-    #             if sample == 'ALL' or not self.scrna_data:
-    #                 self._scrna_dataset = None
-    #         else:
-    #             self.refresh_scrna_data()
-    #
-    #     if data_type == 'spatial' or data_type is None:
-    #         if sample:
-    #             spatial_key = self._resolve_registered_key(sample, finalized=True)
-    #             if spatial_key:
-    #                 self.finalized_data.pop(spatial_key, None)
-    #                 aliases_to_purge = [alias for alias, key in list(self._registered_alias_map.items()) if key == spatial_key]
-    #                 for alias in aliases_to_purge:
-    #                     self._dapi_cache.pop(alias.lower(), None)
-    #                 self._dapi_cache.pop(spatial_key.lower(), None)
-    #         else:
-    #             self.finalized_data.clear()
-    #             self._dapi_cache.clear()
-    #
-    #     if data_type == 'tangram' or data_type is None:
-    #         if sample:
-    #             canonical = self._registered_alias_map.get(sample.lower(), sample)
-    #             self.registered_data.pop(canonical, None)
-    #             self.finalized_data.pop(canonical, None)
-    #             aliases_to_remove = [alias for alias, key in list(self._registered_alias_map.items()) if key == canonical]
-    #             for alias in aliases_to_remove:
-    #                 self._registered_alias_map.pop(alias, None)
-    #                 self._dapi_cache.pop(alias, None)
-    #             self._dapi_cache.pop(canonical.lower(), None)
-    #         else:
-    #             self.registered_data.clear()
-    #             self.finalized_data.clear()
-    #             self._registered_alias_map.clear()
-    #             self._dapi_cache.clear()

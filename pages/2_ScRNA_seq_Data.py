@@ -30,6 +30,7 @@ st.set_page_config(
 # Friendly labels for dropdown menus
 FRIENDLY_NAMES = {
     "active.ident": "Cell Type",
+    "panel2_active.ident": "Cell type with mesenchyme subclusters",
     "orig.ident": "Original sample ID",
     "old.ident": "Previous clustering ID",
     "nCount_RNA": "Total RNA counts per cell",
@@ -49,6 +50,32 @@ FRIENDLY_NAMES = {
 def friendly_label(name):
     """Return a user-friendly label for known metadata fields."""
     return FRIENDLY_NAMES.get(name, str(name))
+
+
+PRIMARY_CELLTYPE_COLUMN = "panel2_active.ident"
+FALLBACK_CELLTYPE_COLUMN = "active.ident"
+
+
+def resolve_celltype_column(columns):
+    """Choose the preferred cell type column with a sensible fallback."""
+    columns_list = list(columns)
+    if PRIMARY_CELLTYPE_COLUMN in columns_list:
+        return PRIMARY_CELLTYPE_COLUMN
+    if FALLBACK_CELLTYPE_COLUMN in columns_list:
+        return FALLBACK_CELLTYPE_COLUMN
+    return columns_list[0] if columns_list else None
+
+
+def order_groupby_columns(columns, primary):
+    """Ensure dropdown options prioritise the preferred cell type columns."""
+    columns_list = list(columns)
+    ordered = []
+    if primary and primary in columns_list:
+        ordered.append(primary)
+    if FALLBACK_CELLTYPE_COLUMN in columns_list and FALLBACK_CELLTYPE_COLUMN not in ordered:
+        ordered.append(FALLBACK_CELLTYPE_COLUMN)
+    ordered.extend([col for col in columns_list if col not in ordered])
+    return ordered
 
 
 # Initialize managers
@@ -84,6 +111,8 @@ if not available_samples:
 adata = data_manager.load_all_scrna_data()
 sample_count = len(available_samples)
 total_cells = adata.n_obs
+obs_columns = adata.obs.columns
+primary_celltype = resolve_celltype_column(obs_columns)
 
 # Manual reload button
 #if st.sidebar.button("🔄 Reload Data"):
@@ -150,7 +179,7 @@ with col4:
 st.subheader("📊 UMAP Plot")
 
 # Get available grouping variables
-groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col != 'active.ident']
+groupby_options = order_groupby_columns(obs_columns, primary_celltype)
 selected_groupby = st.selectbox(
     "Group by:",
     groupby_options,
@@ -171,11 +200,10 @@ violin_controls_col, violin_plot_col = st.columns([1, 2])
 obs_df = adata.obs
 numeric_feature_options = obs_df.select_dtypes(include=[np.number]).columns.tolist()
 categorical_groupby_options = obs_df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+categorical_groupby_options = order_groupby_columns(categorical_groupby_options, primary_celltype)
 
 if 'nCount_SCT' in obs_df.columns and 'nCount_SCT' not in numeric_feature_options:
     numeric_feature_options.insert(0, 'nCount_SCT')
-if 'active.ident' in obs_df.columns and 'active.ident' not in categorical_groupby_options:
-    categorical_groupby_options.insert(0, 'active.ident')
 
 selected_feature = None
 selected_groupby = None
@@ -209,21 +237,11 @@ with violin_plot_col:
             feature=selected_feature,
         )
 
-#st.caption("Plotly violin (interactive)")
-#violin_plotly = viz_manager.plot_violinplot_plotly(
-#    adata,
-#    groupby=selected_groupby,
-#    feature=selected_feature,
-#    title=f"Violin Plot - {sample_display_name}"
-#)
-#if violin_plotly:
-#    st.plotly_chart(violin_plotly, use_container_width=True)
-
 # Dot Plot
 st.subheader("🔴 Dot Plot")
 
 # Get available grouping variables
-groupby_options = ['active.ident'] + [col for col in adata.obs.columns if col != 'active.ident']
+groupby_options = order_groupby_columns(obs_columns, primary_celltype)
 selected_groupby = st.selectbox(
     "Group by:",
     groupby_options,
@@ -294,11 +312,7 @@ selected_genes = st.multiselect(
     key="feature_genes"
 )
 
-# feature_fig = viz_manager.plot_feature_plot(adata, genes=selected_genes)
-# if feature_fig:
-#     st.plotly_chart(feature_fig, use_container_width=True)
 
-# Feature Plot (Scanpy layout)
 
 if selected_genes:
     scanpy_fig = viz_manager.plot_feature_plot_scanpy(adata, genes=selected_genes)
@@ -312,7 +326,7 @@ else:
 st.subheader("🧫 Cell Type Proportion")
 
 # Use fixed grouping variables
-selected_cell_type = 'active.ident'  # Fixed cell type grouping
+selected_cell_type = primary_celltype  # Fixed cell type grouping
 selected_sample_group = 'orig.ident'  # This represents the samples users selected
 
 # Create the stacked bar chart
@@ -349,51 +363,3 @@ if selected_cell_type in adata.obs.columns and selected_sample_group in adata.ob
     #st.info(f"📊 Cell type proportion showing '{selected_cell_type}' grouped by '{selected_sample_group}'")
 else:
     st.error(f"Selected grouping variables not found in data")
-
-# # Data Information
-# st.subheader("📋 Data Info")
-
-# col1, col2, col3 = st.columns(3)
-
-# with col1:
-#     st.subheader("📊 Summary")
-#     st.write(f"**Samples**: {sample_display_name}")
-#     st.write(f"**Cells**: {adata.n_obs:,}")
-#     st.write(f"**Genes**: {adata.n_vars:,}")
-#     
-#     if 'active.ident' in adata.obs.columns:
-#         cell_types = adata.obs['active.ident'].value_counts()
-#         st.write("**Cell Types**:")
-#         for ct, count in cell_types.head(5).items():
-#             st.write(f"  - {ct}: {count}")
-#         if len(cell_types) > 5:
-#             st.write(f"  - ... and {len(cell_types) - 5} more")
-
-# with col2:
-#     # Quality metrics
-#     st.subheader("📊 Quality Metrics")
-#     if 'total_counts' in adata.obs.columns:
-#         st.write(f"**Mean Counts/Cell**: {np.mean(adata.obs['total_counts']):.1f}")
-#         st.write(f"**Median Counts/Cell**: {np.median(adata.obs['total_counts']):.1f}")
-#     else:
-#         st.write("**Mean Counts/Cell**: N/A")
-#         st.write("**Median Counts/Cell**: N/A")
-#     
-#     if 'n_genes_by_counts' in adata.obs.columns:
-#         st.write(f"**Mean Genes/Cell**: {np.mean(adata.obs['n_genes_by_counts']):.1f}")
-#         st.write(f"**Median Genes/Cell**: {np.median(adata.obs['n_genes_by_counts']):.1f}")
-#     else:
-#         st.write("**Mean Genes/Cell**: N/A")
-#         st.write("**Median Genes/Cell**: N/A")
-
-# with col3:
-#     # Top genes
-#     st.subheader("🔝 Top Expressed Genes")
-#     if 'total_counts' in adata.var.columns:
-#         top_10_genes = adata.var['total_counts'].nlargest(10)
-#         for i, (gene, counts) in enumerate(top_10_genes.items(), 1):
-#             st.write(f"{i}. {gene}: {counts:,.0f}")
-#     else:
-#         # Show first 10 gene names if total_counts not available
-#         for i, gene in enumerate(adata.var_names[:10], 1):
-#             st.write(f"{i}. {gene}")
