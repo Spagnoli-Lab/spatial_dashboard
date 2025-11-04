@@ -43,20 +43,60 @@ def format_sample_label(value: Optional[str]) -> str:
 
 class DataManager:
     """Manages data loading and processing for all three data types"""
-    
+
+    @staticmethod
+    def _resolve_base_data_dir(override: Optional[str] = None) -> Path:
+        """Resolve the root directory that houses all application datasets."""
+        candidate_strings: List[str] = []
+        if override:
+            candidate_strings.append(override)
+
+        for env_var in ("DASHBOARD_DATA_DIR", "STREAMLIT_DATA_DIR", "DATA_DIR"):
+            env_value = os.environ.get(env_var)
+            if env_value:
+                candidate_strings.append(env_value)
+
+        candidate_paths: List[Path] = [
+            Path(string).expanduser() for string in candidate_strings if string
+        ]
+        candidate_paths.append(Path("/mnt/data"))
+        repository_default = Path(__file__).resolve().parent.parent / "test_data"
+        candidate_paths.append(repository_default)
+
+        for candidate in candidate_paths:
+            if candidate.exists():
+                return candidate
+
+        # Fall back to the best available candidate even if it does not yet exist.
+        if candidate_paths:
+            return candidate_paths[0]
+        return repository_default
+
+    @staticmethod
+    def _prefer_subdir(base_dir: Path, subdir_name: str) -> Path:
+        """Return a subdirectory when present, otherwise the provided base directory."""
+        if base_dir.name.lower() == subdir_name.lower():
+            return base_dir
+
+        candidate = base_dir / subdir_name
+        if candidate.exists():
+            return candidate
+        return base_dir
+
     def __init__(self, data_dir: str = None):
         # Set up different data directories for different data types
-        base_dir = "/Users/mayongzhi/Desktop/FS_lab/dashboard/test_data"
-        self.scrna_data_dir = Path(base_dir) / "scRNA-seq"
-        self.spatial_data_dir = Path(base_dir)  # Spatial data is in the main test_data directory
-        self.tangram_data_dir = Path(base_dir)  # Tangram data is also in the main test_data directory
-        
+        base_dir = self._resolve_base_data_dir(data_dir)
+        self.base_data_dir = base_dir
+        self.scrna_data_dir = self._prefer_subdir(base_dir, "scRNA-seq")
+        self.spatial_data_dir = self._prefer_subdir(base_dir, "spatial")
+        self.tangram_data_dir = self.spatial_data_dir
+
         # Use provided data_dir if specified (for backward compatibility)
         if data_dir:
-            self.data_dir = Path(data_dir)
+            self.data_dir = Path(data_dir).expanduser()
         else:
             self.data_dir = self.spatial_data_dir  # Default to spatial data directory
-        
+
         self.scrna_data = {}  # Dictionary to store scRNA-seq data by sample (legacy cache)
         self._scrna_dataset: Optional[anndata.AnnData] = None  # Cache for combined scRNA-seq dataset
         self.registered_data: Dict[str, anndata.AnnData] = {}
@@ -526,4 +566,3 @@ class DataManager:
 
         entry['dapi_path'] = best_file
         return best_file
-
