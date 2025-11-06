@@ -4,20 +4,25 @@
 In our paper, we project single-cell-resolution gene expression profile to the spatial transcriptomics data. This dashboard provides interactive visualisation to explore our findings. 
 
 
-## Demo
-
-- Select samples of interest
-- Select annotation
-- Adjust image size and point size
-- Choose genes of interest through the drop-down menu or typing
-
-## Features
+## Features and Demo
 
 - Single-cell transcriptomics: 
   - UMAP
+    
+https://github.com/user-attachments/assets/e6e19b41-627c-44ad-bc73-b2613a6a9331
+
   - Violin plots
+
+https://github.com/user-attachments/assets/ed8df434-9243-49c2-bd6e-cb891fb34332
+
   - Dot plot
+
+https://github.com/user-attachments/assets/e81f531c-3988-4899-9877-9c9abb246fce
+
   - Feature plot
+
+https://github.com/user-attachments/assets/0e31b3fd-534b-4d3b-9841-fe9beb41df02
+
   - Cell type proportion plot
 - Spatial transcriptomics: 
   - DAPI image
