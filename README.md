@@ -7,22 +7,22 @@ In our paper, we project single-cell-resolution gene expression profile to the s
 ## Features and Demo
 
 - Single-cell transcriptomics: 
-    
-https://github.com/user-attachments/assets/e6e19b41-627c-44ad-bc73-b2613a6a9331
 
-https://github.com/user-attachments/assets/ed8df434-9243-49c2-bd6e-cb891fb34332
+![scRNA-seq UMAP](https://github.com/user-attachments/assets/1976c595-dec2-4bf7-9d99-45be58cbd9b0)
 
-https://github.com/user-attachments/assets/e81f531c-3988-4899-9877-9c9abb246fce
+![scRNA-seq Violin Plot](https://github.com/user-attachments/assets/ef52cb8a-85d9-4907-8696-ab9d21e194f0)
 
-https://github.com/user-attachments/assets/0e31b3fd-534b-4d3b-9841-fe9beb41df02
+![scRNA-seq Dot Plot](https://github.com/user-attachments/assets/c3034b30-21f6-4822-bde6-e1a43761cf76)
+
+![scRNA-seq Feature Plot](https://github.com/user-attachments/assets/1cf3f688-1e01-46fb-9fc3-4dd802525d44)
 
 - Spatial transcriptomics: 
 
-https://github.com/user-attachments/assets/a95a93dd-d790-4184-aa51-566d2afed8af
+![spatial DAPI and Spatial Scatter Plot](https://github.com/user-attachments/assets/f2f2192f-83e8-4db8-a5fe-692ef9a53c86)
 
 - Single-cell-resolution gene expression profile projection using Tangram:
 
-https://github.com/user-attachments/assets/d00bb129-016b-4fe6-ac70-464b72575a0a
+![tangram](https://github.com/user-attachments/assets/24a07d83-8355-4a59-9053-a3176b39b081)
 
 ## Tech Stack
 
