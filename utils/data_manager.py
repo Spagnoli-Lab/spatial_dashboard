@@ -47,35 +47,16 @@ class DataManager:
     @staticmethod
     def _resolve_base_data_dir(override: Optional[str] = None) -> Path:
         """Resolve the root directory that houses all application datasets."""
-        candidate_strings: List[str] = []
         if override:
-            candidate_strings.append(override)
+            override_path = Path(override).expanduser()
+            if override_path.exists():
+                return override_path
 
-        for env_var in ("DASHBOARD_DATA_DIR", "STREAMLIT_DATA_DIR", "DATA_DIR"):
-            env_value = os.environ.get(env_var)
-            if env_value:
-                candidate_strings.append(env_value)
+        fixed_path = Path("/mnt/data/test_data")
+        if fixed_path.exists():
+            return fixed_path
 
-        candidate_paths: List[Path] = [
-            Path(string).expanduser() for string in candidate_strings if string
-        ]
-
-        # Prefer dataset bundle under /mnt/data/test_data when available
-        preferred_external = Path("/mnt/data/test_data")
-        generic_external = Path("/mnt/data")
         repository_default = Path(__file__).resolve().parent.parent / "test_data"
-
-        for candidate in (preferred_external, generic_external, repository_default):
-            if candidate not in candidate_paths:
-                candidate_paths.append(candidate)
-
-        for candidate in candidate_paths:
-            if candidate.exists():
-                return candidate
-
-        # Fall back to the best available candidate even if it does not yet exist.
-        if candidate_paths:
-            return candidate_paths[0]
         return repository_default
 
     @staticmethod
