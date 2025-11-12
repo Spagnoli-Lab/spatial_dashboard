@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Utilities for rendering the shared home page content."""
 
+from pathlib import Path
+
 import streamlit as st
+
+LOGO_PATH = Path(__file__).resolve().with_name("King's_College_London_logo.svg.png")
+
 
 def render_home_page() -> None:
     
@@ -201,8 +206,5 @@ def render_home_page() -> None:
         st.markdown("*Powered by Streamlit, Scanpy, Squidpy, Tangram, Plotly, Matplotlib, Seaborn, and Tissuumaps*")
 
     with right_col:
-        st.image(
-            "/Users/mayongzhi/Desktop/FS_lab/dashboard/utils/King's_College_London_logo.svg.png",
-            use_container_width=True
-        )
-
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), use_container_width=True)

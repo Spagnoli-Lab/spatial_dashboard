@@ -59,9 +59,15 @@ class DataManager:
         candidate_paths: List[Path] = [
             Path(string).expanduser() for string in candidate_strings if string
         ]
-        candidate_paths.append(Path("/mnt/data"))
+
+        # Prefer dataset bundle under /mnt/data/test_data when available
+        preferred_external = Path("/mnt/data/test_data")
+        generic_external = Path("/mnt/data")
         repository_default = Path(__file__).resolve().parent.parent / "test_data"
-        candidate_paths.append(repository_default)
+
+        for candidate in (preferred_external, generic_external, repository_default):
+            if candidate not in candidate_paths:
+                candidate_paths.append(candidate)
 
         for candidate in candidate_paths:
             if candidate.exists():

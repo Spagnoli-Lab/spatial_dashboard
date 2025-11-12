@@ -24,6 +24,12 @@ from utils.data_manager import DataManager, format_sample_label
 from utils.visualization_manager import VisualizationManager
 from utils.spatial_visualization_manager import SpatialVisualizationManager
 
+st.set_page_config(
+    page_title="Spatial Data - Spatial Transcriptomics Dashboard",
+    page_icon="🗺️",
+    layout="wide"
+)
+
 # ---- Sidebar: Environment status -----------------------------------------
 # Notify users about Squidpy availability before rendering other widgets.
 # Try to import squidpy
@@ -36,12 +42,6 @@ try:
 except ImportError:
     SQUIDPY_AVAILABLE = False
     st.sidebar.warning("⚠️ Squidpy not available. Spatial analysis features will be limited.")
-
-st.set_page_config(
-    page_title="Spatial Data - Spatial Transcriptomics Dashboard",
-    page_icon="🗺️",
-    layout="wide"
-)
 
 # Friendly labels for Tangram/spatial metadata fields
 TANGRAM_FRIENDLY_NAMES = {

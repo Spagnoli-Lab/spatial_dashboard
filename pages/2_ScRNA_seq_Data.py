@@ -109,6 +109,14 @@ if not available_samples:
 
 # Data loading
 adata = data_manager.load_all_scrna_data()
+if adata is None:
+    st.error(
+        "Unable to load the scRNA-seq reference dataset. "
+        "Set `DASHBOARD_DATA_DIR` (or copy `Cartana_simplified_fixname.h5ad` "
+        "into `test_data/scRNA-seq`) before launching the dashboard."
+    )
+    st.stop()
+
 sample_count = len(available_samples)
 total_cells = adata.n_obs
 obs_columns = adata.obs.columns
