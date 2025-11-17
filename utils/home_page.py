@@ -87,6 +87,7 @@ def render_home_page() -> None:
     """
     )
 
+    st.markdown(
     """
     ## Technical Stack
     ### Analysis Tools
@@ -105,17 +106,16 @@ def render_home_page() -> None:
     
     ---
     """
-    #)
+    )
 
-
-    st.markdown("---")
 
     # --- GitHub Link Section ---
     st.header("GitHub Repository")
     st.markdown(
     """
     Explore the full source code and documentation of this project:  
-    [https://github.com/Spagnoli-Lab/spatial-pancreas-communities](https://github.com/Spagnoli-Lab/spatial-pancreas-communities)
+    [https://github.com/Spagnoli-Lab/spatial-pancreas-communities](https://github.com/Spagnoli-Lab/spatial-pancreas-communities)  
+    
     The repository of this dashboard:
     [https://github.com/Spagnoli-Lab/spatial_dashboard](https://github.com/Spagnoli-Lab/spatial_dashboard)
     """
@@ -127,7 +127,9 @@ def render_home_page() -> None:
     st.markdown(
     """
     ## Citation
-    Alejo Torres-Cano et al. ,Spatially organized cellular communities shape functional tissue architecture in the pancreas.Sci. Adv.11,eadx5791(2025).DOI:10.1126/sciadv.adx5791
+    Alejo Torres-Cano et al. ,Spatially organized cellular communities shape functional tissue architecture in the pancreas.Sci. Adv.11,eadx5791(2025).DOI:10.1126/sciadv.adx5791  
+    
+    If you have any feedback or questions, please reach out to us by francesca.spagnoli@kcl.ac.uk
     """
     )
 
@@ -149,7 +151,7 @@ def render_home_page() -> None:
     st.markdown(
     """
     ## Dashboard Created By
-    **Siwanart Ma**
+    [Siwanart Ma](https://github.com/SiwanartMa)
     
     ---
     """)
