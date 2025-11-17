@@ -1,7 +1,7 @@
 
 # Spatial pancreatic atlas dashboard
 
-In our paper, we project single-cell-resolution gene expression profile to the spatial transcriptomics data. This dashboard provides interactive visualisation to explore our findings. 
+In our paper [Spatially organized cellular communities shape functional tissue architecture in the pancreas](https://eur03.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdoi.org%2F10.1126%2Fsciadv.adx5791&data=05%7C02%7Csiwanart.ma%40kcl.ac.uk%7C56758459d04241b2a25608de2364125e%7C8370cf1416f34c16b83c724071654356%7C0%7C0%7C638987109879200955%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=jCy0uAt07%2FR%2BR5zHWO90O5GzUj9dgboSy0aCoZ3meI4%3D&reserved=0), we project single-cell-resolution gene expression profile to the spatial transcriptomics data. This dashboard provides interactive visualisation to explore our findings. 
 
 
 ## Features and Demo
