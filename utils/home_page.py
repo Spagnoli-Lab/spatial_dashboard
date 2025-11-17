@@ -15,9 +15,8 @@ def render_home_page() -> None:
 
     st.markdown("""
     ## **About this Study**
-    This dashboard presents a high-resolution, single-cell and spatial transcriptomic map of the mouse developing pancreas.  
-    By integrating scRNA-seq data with spatially resolved transcriptomics, we chart how diverse pancreatic cell types—especially poorly defined mesenchymal populations—organize across space and time during development.  
-    This approach reveals the multicellular “niches” that shape endocrine and exocrine tissue architecture and provides a framework to guide in-vitro organogenesis and tissue engineering for pancreatic disease.
+    In our paper [Spatially organized cellular communities shape functional tissue architecture in the pancreas](https://eur03.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdoi.org%2F10.1126%2Fsciadv.adx5791&data=05%7C02%7Csiwanart.ma%40kcl.ac.uk%7C56758459d04241b2a25608de2364125e%7C8370cf1416f34c16b83c724071654356%7C0%7C0%7C638987109879200955%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=jCy0uAt07%2FR%2BR5zHWO90O5GzUj9dgboSy0aCoZ3meI4%3D&reserved=0), we project single-cell-resolution gene expression profile to the spatial transcriptomics data. This dashboard provides interactive visualisation to explore our findings.  
+    It presents a high-resolution, single-cell and spatial transcriptomic map of the mouse developing pancreas. By integrating scRNA-seq data with spatially resolved transcriptomics, we chart how diverse pancreatic cell types—especially poorly defined mesenchymal populations—organize across space and time during development.This approach reveals the multicellular “niches” that shape endocrine and exocrine tissue architecture and provides a framework to guide in-vitro organogenesis and tissue engineering for pancreatic disease.
 
     ---
 
@@ -87,33 +86,11 @@ def render_home_page() -> None:
     """
     )
 
-    st.markdown(
-    """
-    ## Technical Stack
-    ### Analysis Tools
-    - **Scanpy**: Single-cell analysis pipeline  
-    - **Squidpy**: Spatial data visualisation  
-    - **Tangram**: Spatial mapping algorithms
-    
-    ### Visualisation Libraries
-    - **Plotly**  
-    - **Matplotlib**  
-    - **Seaborn**  
-
-    ### Platform
-    - **Streamlit**: Web application framework  
-    - **Python**: Scientific computing environment
-    
-    ---
-    """
-    )
-
-
     # --- GitHub Link Section ---
     st.header("GitHub Repository")
     st.markdown(
     """
-    Explore the full source code and documentation of this project:  
+    Explore the full source code and documentation of this project:
     [https://github.com/Spagnoli-Lab/spatial-pancreas-communities](https://github.com/Spagnoli-Lab/spatial-pancreas-communities)  
     
     The repository of this dashboard:
@@ -128,12 +105,10 @@ def render_home_page() -> None:
     """
     ## Citation
     Alejo Torres-Cano et al. ,Spatially organized cellular communities shape functional tissue architecture in the pancreas.Sci. Adv.11,eadx5791(2025).DOI:10.1126/sciadv.adx5791  
-    
-    If you have any feedback or questions, please reach out to us by francesca.spagnoli@kcl.ac.uk
     """
     )
 
-    st.subheader("BibTeX Citation")
+    #st.subheader("BibTeX Citation")
     st.code("""
     @article{torres2025spatially,
     title={Spatially organized cellular communities shape functional tissue architecture in the pancreas},
@@ -147,6 +122,10 @@ def render_home_page() -> None:
     }
     """, language="bibtex")
 
+    st.markdown(
+    """
+    If you have any feedback or questions, please reach out to us by francesca.spagnoli@kcl.ac.uk
+    """)
     # Dashboard Created By
     st.markdown(
     """
