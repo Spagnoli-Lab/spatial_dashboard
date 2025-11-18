@@ -70,12 +70,40 @@ class DataManager:
             return candidate
         return base_dir
 
+    @staticmethod
+    def _resolve_spatial_dir(base_dir: Path) -> Path:
+        """Prefer the latest spatial dataset directory if multiple are available."""
+        preferred_order = ("spatial_panel2", "spatial")
+
+        for name in preferred_order:
+            if base_dir.name.lower() == name.lower():
+                return base_dir
+
+        for name in preferred_order:
+            candidate = base_dir / name
+            if candidate.exists():
+                return candidate
+
+        return base_dir
+
     def __init__(self, data_dir: str = None):
         # Set up different data directories for different data types
         base_dir = self._resolve_base_data_dir(data_dir)
+        spatial_override: Optional[Path] = None
+
+        if data_dir:
+            override_path = Path(data_dir).expanduser()
+            if override_path.exists() and override_path.is_dir():
+                lower_name = override_path.name.lower()
+                if lower_name in {"spatial", "spatial_panel2"}:
+                    spatial_override = override_path
+                    parent = override_path.parent
+                    if parent.exists():
+                        base_dir = parent
+
         self.base_data_dir = base_dir
         self.scrna_data_dir = self._prefer_subdir(base_dir, "scRNA-seq")
-        self.spatial_data_dir = self._prefer_subdir(base_dir, "spatial")
+        self.spatial_data_dir = spatial_override or self._resolve_spatial_dir(base_dir)
         self.tangram_data_dir = self.spatial_data_dir
 
         # Use provided data_dir if specified (for backward compatibility)

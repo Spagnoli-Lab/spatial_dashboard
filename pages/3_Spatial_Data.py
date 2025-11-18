@@ -4,7 +4,6 @@ Spatial Data Analysis Page
 """
 
 import streamlit as st
-from streamlit import session_state as ss
 import pandas as pd
 import numpy as np
 import anndata
@@ -69,6 +68,7 @@ def get_managers():
     spatial_viz_manager = SpatialVisualizationManager()
     return data_manager, viz_manager, spatial_viz_manager
 
+
 data_manager, viz_manager, spatial_viz_manager = get_managers()
 
 # ---- Main page: Sample selection -----------------------------------------
@@ -76,12 +76,14 @@ data_manager, viz_manager, spatial_viz_manager = get_managers()
 registered_catalog = data_manager.get_registered_catalog()
 available_samples = data_manager.get_available_registered_samples()
 
+
 def _get_sample_label(sample_key: str) -> str:
     entry = registered_catalog.get(sample_key, {})
     candidates = [
         entry.get("primary_sample"),
-        entry.get("file_stem"),
         entry.get("display_name"),
+        entry.get("file_stem"),
+        entry.get("file_name"),
         sample_key,
     ]
     for candidate in candidates:
@@ -96,8 +98,6 @@ if not available_samples:
     st.stop()
 
 st.title("🗺️ Spatial Data Explorer")
-
-sample_labels = [_get_sample_label(key) for key in available_samples]
 
 selected_sample = st.selectbox(
     "Select Sample:",
