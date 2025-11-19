@@ -137,8 +137,6 @@ with st.expander("Data Origin and scRNA-seq Processing", expanded=False):
     **Data Origin**  
     - **Newly generated Smart-seq2 data:** GFP⁺ cells were FACS-isolated from E12.5 Nkx2.5-Cre;R26mTmG, Nkx3.2-Cre;R26mTmG and Tg(Prox1-GFP) mouse embryonic pancreata.  
     - **Public embryonic datasets:** E12.5, E14.5 and E17.5 (GSE101099) from the Gene Expression Omnibus (GEO).  
-    - **Adult pancreatic mesenchyme datasets:** GEO (GSE125588, GSE176063) and ArrayExpress (E-MTAB-8483).  
-    - **Human data:** OMIX database (OMIX001616).  
 
     **Processing of Smart-seq2 Data**  
     - Sequencing libraries prepared with Smart-seq2 and sequenced on Illumina NextSeq 500.  
@@ -157,8 +155,6 @@ with st.expander("Data Origin and scRNA-seq Processing", expanded=False):
     - Each batch processed independently with **SCTransform** (3,000 features; regress cell-cycle).  
     - Integrated using **Seurat integration workflow**.  
     - Embryonic datasets clustered with first 20 PCs (resolution 1); subclusters at resolution 0.5 for M-VSM analysis.  
-    - Adult datasets clustered with 30 PCs (resolution 0.7); integrated with embryonic mesenchyme using **Harmony** (50 PCs, resolution 0.5).  
-    - Human-mouse integration performed with **Mousipy** orthologue mapping followed by **MultiMAP** (strength 0.7 and 0.3).  
 
     **Final Output**  
     - A harmonized, high-coverage **single-cell atlas of embryonic, adult, and human pancreatic cells**.  
