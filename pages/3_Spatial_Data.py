@@ -47,7 +47,7 @@ TANGRAM_FRIENDLY_NAMES = {
     "celltype": "Assigned cell type",
     "x": "Spatial coordinate (x-axis)",
     "y": "Spatial coordinate (y-axis)",
-    "uniform_density": "Cell density (uniform model)",
+    #"uniform_density": "Cell density (uniform model)",
     "rna_count_based_density": "Cell density (RNA count-based model)",
     "Tangram_annotation": "Tangram-predicted spatial annotation",
     "total_counts": "Total RNA counts per cell",
@@ -192,7 +192,7 @@ if SQUIDPY_AVAILABLE:
             st.info("No DAPI image available for sizing.")
 
         # Color options for squidpy
-        squidpy_color_options = ['celltype'] + [col for col in adata.obs.columns if col not in ['spatial_x', 'spatial_y', 'celltype']]
+        squidpy_color_options = ['Tangram_annotation'] + [col for col in adata.obs.columns if col not in ['x', 'y', 'spatial_x', 'spatial_y','celltype', 'Tangram_annotation','uniform_density']]
         squidpy_color = st.selectbox(
             "Color by:",
             squidpy_color_options,

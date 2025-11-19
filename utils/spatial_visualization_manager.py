@@ -14,6 +14,8 @@ from pathlib import Path
 import sys
 import copy
 from typing import Optional, Tuple
+import matplotlib.cm as cm
+import matplotlib.colors as clr
 
 # Try to import squidpy
 try:
@@ -76,6 +78,17 @@ class SpatialVisualizationManager:
             if 'spatial' not in adata.uns:
                 adata.uns['spatial'] = {'spatial': True}
             
+            num_categories = len(adata.obs["Tangram_annotation"].cat.categories)
+
+            # Generate a list of colors as RGBA tuples
+            color_tuples = [cm.get_cmap('tab20')(i) for i in np.linspace(0, 1, num_categories)]
+
+            # Convert to a list of hex color strings
+            unique_hex_palette = [clr.to_hex(color, keep_alpha=True) for color in color_tuples]
+
+            # Add it to uns
+            adata.uns['Tangram_annotation_colors'] = unique_hex_palette
+
             # Create spatial scatter plot
             sq.pl.spatial_scatter(
                 adata,

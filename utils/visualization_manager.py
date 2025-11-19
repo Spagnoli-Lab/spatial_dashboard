@@ -272,23 +272,40 @@ class VisualizationManager:
     def plot_celltype_proportion(adata, sample, title="Cell Type Proportion"):
         """Create cell type proportion plot"""
         try:
-            # Look for cell type column
-            celltype_cols = [col for col in adata.obs.columns if 'cell' in col.lower() or 'type' in col.lower() or 'ident' in col.lower()]
-            
-            if celltype_cols:
-                celltype_col = celltype_cols[0]
+            preferred_col = "Tangram_annotation"
+            celltype_col = None
+
+            if preferred_col in adata.obs.columns:
+                celltype_col = preferred_col
+            else:
+                # Fall back to older heuristic when Tangram annotations are missing
+                celltype_cols = [
+                    col
+                    for col in adata.obs.columns
+                    if "cell" in col.lower() or "type" in col.lower() or "ident" in col.lower()
+                ]
+                if celltype_cols:
+                    celltype_col = celltype_cols[0]
+
+            if celltype_col:
                 cell_counts = adata.obs[celltype_col].value_counts()
-                
+
                 fig = px.pie(
                     values=cell_counts.values,
                     names=cell_counts.index,
                     title=f"{title} - {sample}"
                 )
                 fig.update_layout(height=500)
+
+                if celltype_col != preferred_col:
+                    st.info(
+                        "Tangram annotations missing; showing cell type proportions using "
+                        f"'{celltype_col}'."
+                    )
                 return fig
-            else:
-                st.warning("No cell type column found")
-                return None
+
+            st.warning("No cell type annotation found in the dataset.")
+            return None
         except Exception as e:
             st.error(f"Error creating cell type proportion plot: {e}")
             return None
