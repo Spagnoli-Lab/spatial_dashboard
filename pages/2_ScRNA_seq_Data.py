@@ -142,14 +142,14 @@ with st.expander("Data Origin and scRNA-seq Processing", expanded=False):
     - Sequencing libraries prepared with Smart-seq2 and sequenced on Illumina NextSeq 500.  
     - Reads aligned to mouse genome (GRCm38) using **Kallisto pseudo-alignment** (v0.46.1).  
     - Transcript counts converted to gene counts with **Tximport** (v1.18.0).  
-    - **Quality control filters:**  
+    - Quality control filters:  
       - Remove genes expressed in <3 cells.  
       - Exclude cells with <1,000 genes or <100,000 counts.  
       - Exclude cells with >30% mitochondrial counts.  
-    - **Normalization and regression:** Log normalization and regression of cell-cycle differences (ScaleData).  
-    - **Dimensionality reduction:** PCA, JackStraw to select significant PCs, then **UMAP** visualization.  
-    - **Clustering:** Shared nearest neighbor (SNN) graph; FindNeighbors/FindClusters at resolution 1.9.  
-    - **Annotation:** Clusters manually curated using marker genes.  
+    - Normalization and regression: Log normalization and regression of cell-cycle differences (ScaleData).  
+    - Dimensionality reduction: PCA, JackStraw to select significant PCs, then **UMAP** visualization.  
+    - Clustering: Shared nearest neighbor (SNN) graph; FindNeighbors/FindClusters at resolution 1.9.  
+    - Annotation: Clusters manually curated using marker genes.  
 
     **Integration of Public Datasets**  
     - Each batch processed independently with **SCTransform** (3,000 features; regress cell-cycle).  
