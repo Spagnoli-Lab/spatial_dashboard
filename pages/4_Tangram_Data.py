@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import anndata
 import matplotlib.pyplot as plt
@@ -36,11 +36,18 @@ def get_data_manager() -> DataManager:
 
 
 data_manager = get_data_manager()
+tangram_root = data_manager.spatial_data_dir
 
 
 @st.cache_resource
 def _load_predicted_dataset(path_str: str) -> anndata.AnnData:
     """Read and memoise a Tangram predicted dataset."""
+    return anndata.read_h5ad(path_str)
+
+
+@st.cache_resource
+def _load_measured_dataset(path_str: str) -> anndata.AnnData:
+    """Read and memoise the measured Tangram dataset."""
     return anndata.read_h5ad(path_str)
 
 
@@ -62,39 +69,35 @@ def _matches_stage_prefix(value: str) -> bool:
     return any(upper_value.startswith(prefix.upper()) for prefix in TARGET_STAGE_PREFIXES)
 
 
-def _is_target_stage(entry: Dict[str, object]) -> bool:
-    """Return True when the catalog entry belongs to one of the target stages."""
-    candidates = [
-        entry.get("primary_sample"),
-        entry.get("file_stem"),
-        entry.get("display_name"),
-    ]
-    return any(_matches_stage_prefix(str(candidate or "")) for candidate in candidates)
+def _infer_label_from_name(value: str) -> str:
+    formatted = format_sample_label(value)
+    return formatted or value
 
 
-def _find_trained_path(tangram_path: Path) -> Optional[Path]:
-    """Locate the trained predictions that correspond to a Tangram dataset."""
-    if not tangram_path.exists():
+def _find_measured_partner(trained_path: Path) -> Optional[Path]:
+    """Locate the measured Tangram dataset corresponding to a trained file."""
+    if not trained_path.exists():
         return None
 
-    folder = tangram_path.parent
-    stem = tangram_path.stem
-    base_name = re.sub(r"(?i)_tangram$", "", stem)
+    folder = trained_path.parent
+    stem = trained_path.stem
+    base_name = re.sub(r"(?i)_trained$", "", stem)
 
     candidate_names = (
-        f"{base_name}_trained.h5ad",
-        f"{base_name}_Trained.h5ad",
-        stem.replace("Tangram", "trained") + ".h5ad",
-        stem.replace("tangram", "trained") + ".h5ad",
+        f"{base_name}_Tangram.h5ad",
+        f"{base_name}_tangram.h5ad",
+        stem.replace("trained", "Tangram") + ".h5ad",
+        stem.replace("trained", "tangram") + ".h5ad",
+        base_name + "_Tangram.h5ad",
     )
 
     for name in candidate_names:
         candidate = folder / name
-        if candidate.is_file() and candidate.name.lower().endswith("trained.h5ad"):
+        if candidate.is_file() and "tangram" in candidate.name.lower():
             return candidate
 
     base_fragment = base_name.lower()
-    for file_path in sorted(folder.glob("*trained.h5ad")):
+    for file_path in sorted(folder.glob("*Tangram*.h5ad")):
         if not file_path.is_file():
             continue
         if base_fragment and base_fragment not in file_path.stem.lower():
@@ -104,48 +107,43 @@ def _find_trained_path(tangram_path: Path) -> Optional[Path]:
     return None
 
 
+def _trained_files() -> List[Path]:
+    """Return *_trained.h5ad files under the tangram root directory."""
+    if not tangram_root.exists():
+        return []
+
+    trained_files = []
+    for file_path in sorted(tangram_root.rglob("*.h5ad")):
+        name_lower = file_path.name.lower()
+        if not name_lower.endswith("trained.h5ad"):
+            continue
+        if any(part.lower() == "scrna-seq" for part in file_path.parts):
+            continue
+        trained_files.append(file_path)
+
+    return trained_files
+
+
 def _build_sample_options() -> List[SampleOption]:
     """Return sidebar options constrained to the target developmental stage."""
-    catalog = data_manager.get_registered_catalog() or {}
     options: List[SampleOption] = []
-
-    for entry in catalog.values():
-        if not _is_target_stage(entry):
+    for trained_path in _trained_files():
+        base_name = re.sub(r"(?i)_trained$", "", trained_path.stem)
+        if not _matches_stage_prefix(base_name):
             continue
 
-        entry_path = Path(entry.get("path", ""))
-        if not entry_path.exists() or "tangram" not in entry_path.name.lower():
+        measured_path = _find_measured_partner(trained_path)
+        if measured_path is None:
             continue
 
-        trained_path = _find_trained_path(entry_path)
-        if trained_path is None or "trained" not in trained_path.name.lower():
-            continue
-
-        option_key = str(entry.get("key") or entry_path.stem)
-
-        label_candidates = [
-            entry.get("primary_sample"),
-            entry.get("file_stem"),
-            entry.get("display_name"),
-            option_key,
-            entry_path.stem,
-        ]
-
-        option_label = next(
-            (
-                formatted
-                for candidate in label_candidates
-                for formatted in [format_sample_label(candidate)]
-                if formatted
-            ),
-            option_key,
-        )
+        option_key = base_name or trained_path.stem
+        option_label = _infer_label_from_name(base_name or trained_path.stem)
 
         options.append(
             SampleOption(
                 key=option_key,
                 label=option_label,
-                measured_path=entry_path,
+                measured_path=measured_path,
                 trained_path=trained_path,
             )
         )
@@ -182,7 +180,7 @@ selected_sample = next(item for item in sample_options if item.label == selected
 # ---- Load Tangram data ----------------------------------------------------
 
 with st.spinner(f"Loading Tangram measurements for {selected_label}..."):
-    adata_measured = data_manager.load_registered_data(selected_sample.key)
+    adata_measured = _load_measured_dataset(str(selected_sample.measured_path))
 
 if adata_measured is None:
     st.error(f"Unable to load Tangram data for {selected_label}.")
