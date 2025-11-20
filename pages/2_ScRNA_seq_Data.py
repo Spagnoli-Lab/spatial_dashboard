@@ -135,8 +135,8 @@ st.title(f"🧬 ScRNA-seq Data")
 with st.expander("Data Origin and scRNA-seq Processing", expanded=False):
     st.markdown("""
     **Data Origin**  
-    - **Newly generated Smart-seq2 data:** GFP⁺ cells were FACS-isolated from E12.5 Nkx2.5-Cre;R26mTmG, Nkx3.2-Cre;R26mTmG and Tg(Prox1-GFP) mouse embryonic pancreata.  
-    - **Public embryonic datasets:** E12.5, E14.5 and E17.5 (GSE101099) from the Gene Expression Omnibus (GEO).  
+    - **Newly generated Smart-seq2 data:** GFP⁺ cells were FACS-isolated from E12.5 Nkx2.5-Cre;R26mTmG, Nkx3.2-Cre;R26mTmG and Tg(Prox1-GFP) mouse embryonic pancreata. Data has been deposited in the Gene Expression Omnibus (GEO) under accession number GSE283594.
+    - **Public embryonic datasets:** E12.5, E14.5 and E17.5. Data was deposited in the GEO under accession number GSE101099, and was published by Byrnes et al., 2018.
 
     **Processing of Smart-seq2 Data**  
     - Sequencing libraries prepared with Smart-seq2 and sequenced on Illumina NextSeq 500.  
@@ -159,6 +159,9 @@ with st.expander("Data Origin and scRNA-seq Processing", expanded=False):
     **Final Output**  
     - A harmonized, high-coverage **single-cell atlas of embryonic, adult, and human pancreatic cells**.  
     - Provides the reference dataset for spatial mapping and downstream analyses (Tangram, Squidpy, CellChat, Matricom).
+    
+    **References**
+    - Byrnes, Lauren E., et al. "Lineage dynamics of murine pancreatic development at single-cell resolution." Nature communications 9.1 (2018): 3922.
     """)
 
 # Summary statistics
