@@ -71,26 +71,6 @@ def get_managers():
 
 data_manager, viz_manager, spatial_viz_manager = get_managers()
 
-with st.expander("Data origin and spatial processing", expanded=False):
-    st.markdown("""
-    **Data background**
-    - After QC, samples were sent to Cartana AB (10x Genomics) for in situ barcode sequencing, imaging, and processing.
-    - Outputs: DAPI images of tissue sections plus CSVs with gene IDs and RNA spot coordinates.
-    - MATLAB was used to generate gene-expression tissue plots; a manual pancreas mask filtered out off-tissue cells/reads.
-    - E12.5 and E14.5 datasets used both segmentation-free and segmentation-based frameworks; E17.5 was kept qualitative because of fewer sections and low detection.
-
-    **Data processing**
-    - Segmentation-based workflow:
-      - Cellpose 2.0 on DAPI for cell segmentation.
-      - Probabilistic cell typing for in situ sequencing to assign reads per cell.
-      - Cell-by-gene matrix passed to Tangram to annotate cell type and impute expression using the integrated scRNA-seq reference.
-      - Tangram tissue maps combined and fed to Squidpy (v1.1.4): `gr.spatial_neighbors(window=10)` to build the spatial graph and compute neighborhood enrichment scores.
-
-    **Final output**
-    - Masked pancreas-only spatial dataset with Tangram-annotated cell types and imputed gene expression.
-    - Squidpy-derived neighborhood enrichment maps highlighting spatial relationships across pancreas cell populations.
-    """)
-
 
 # ---- Main page: Sample selection -----------------------------------------
 
@@ -119,6 +99,26 @@ if not available_samples:
     st.stop()
 
 st.title("🗺️ Spatial Data Explorer")
+
+with st.expander("Data origin and spatial processing", expanded=False):
+    st.markdown("""
+    **Data background**
+    - After QC, samples were sent to Cartana AB (10x Genomics) for in situ barcode sequencing, imaging, and processing.
+    - Outputs: DAPI images of tissue sections plus CSVs with gene IDs and RNA spot coordinates.
+    - MATLAB was used to generate gene-expression tissue plots; a manual pancreas mask filtered out off-tissue cells/reads.
+    - E12.5 and E14.5 datasets used both segmentation-free and segmentation-based frameworks; E17.5 was kept qualitative because of fewer sections and low detection.
+
+    **Data processing**
+    - Segmentation-based workflow:
+      - Cellpose 2.0 on DAPI for cell segmentation.
+      - Probabilistic cell typing for in situ sequencing to assign reads per cell.
+      - Cell-by-gene matrix passed to Tangram to annotate cell type and impute expression using the integrated scRNA-seq reference.
+      - Tangram tissue maps combined and fed to Squidpy (v1.1.4): `gr.spatial_neighbors(window=10)` to build the spatial graph and compute neighborhood enrichment scores.
+
+    **Final output**
+    - Masked pancreas-only spatial dataset with Tangram-annotated cell types and imputed gene expression.
+    - Squidpy-derived neighborhood enrichment maps highlighting spatial relationships across pancreas cell populations.
+    """)
 
 selected_sample = st.selectbox(
     "Select Sample:",
